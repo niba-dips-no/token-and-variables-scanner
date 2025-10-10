@@ -9,6 +9,7 @@ const App = () => {
   const [error, setError] = React.useState<string | null>(null);
   const [searchTerm, setSearchTerm] = React.useState('');
   const [selectedCollection, setSelectedCollection] = React.useState<string | null>(null);
+  const [scanMode, setScanMode] = React.useState<'page' | 'selection'>('page');
 
   React.useEffect(() => {
     // Listen for messages from plugin code
@@ -20,6 +21,9 @@ const App = () => {
         console.log('Setting collections:', msg.data);
         setCollections(msg.data || []);
         setLoading(false);
+        if (msg.scanMode) {
+          setScanMode(msg.scanMode);
+        }
         if (msg.data && msg.data.length > 0 && !selectedCollection) {
           setSelectedCollection(msg.data[0].id);
         }
@@ -28,6 +32,9 @@ const App = () => {
         setLoading(false);
       }
     };
+
+    // Tell plugin that UI is ready
+    parent.postMessage({ pluginMessage: { type: 'ready' } }, '*');
   }, [selectedCollection]);
 
   const handleRefresh = () => {
@@ -51,6 +58,16 @@ const App = () => {
         variableId,
         modeId,
         value
+      }
+    }, '*');
+  };
+
+  const handleScanModeChange = (mode: 'page' | 'selection') => {
+    setScanMode(mode);
+    parent.postMessage({
+      pluginMessage: {
+        type: 'set-scan-mode',
+        scanMode: mode
       }
     }, '*');
   };
@@ -103,7 +120,7 @@ const App = () => {
         <div>
           <h1>Modes Viewer</h1>
           <p style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>
-            Showing variables used on current page
+            Showing variables used on {scanMode === 'page' ? 'current page' : 'selection'}
           </p>
         </div>
         <div className="header-actions">
@@ -113,6 +130,21 @@ const App = () => {
       </div>
 
       <div className="search-bar">
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+          <label style={{ fontSize: '12px', color: '#666' }}>Scan:</label>
+          <button
+            onClick={() => handleScanModeChange('page')}
+            className={scanMode === 'page' ? 'btn-mode-active' : 'btn-mode'}
+          >
+            Page
+          </button>
+          <button
+            onClick={() => handleScanModeChange('selection')}
+            className={scanMode === 'selection' ? 'btn-mode-active' : 'btn-mode'}
+          >
+            Selection
+          </button>
+        </div>
         <input
           type="text"
           placeholder="Search variables..."

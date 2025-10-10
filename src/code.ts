@@ -24,16 +24,18 @@ type PluginCollectionData = {
 }
 
 type PluginMessage = {
-  type: 'collections-data' | 'error' | 'select-nodes' | 'update-variable';
+  type: 'collections-data' | 'error' | 'select-nodes' | 'update-variable' | 'resize' | 'set-scan-mode' | 'ready' | 'refresh';
   data?: PluginCollectionData[];
   error?: string;
   nodeIds?: string[];
   variableId?: string;
   modeId?: string;
   value?: any;
+  size?: { w: number; h: number };
+  scanMode?: 'page' | 'selection';
 }
 
-// Show the plugin UI
+// Show the plugin UI immediately
 figma.showUI(__html__, {
   width: 800,
   height: 600,
@@ -41,7 +43,7 @@ figma.showUI(__html__, {
   title: "Modes Viewer"
 });
 
-// Restore previous window size
+// Restore previous window size (non-blocking)
 figma.clientStorage.getAsync('windowSize').then((size: any) => {
   if (size && size.w && size.h) {
     figma.ui.resize(size.w, size.h);
@@ -124,16 +126,25 @@ function getUsedVariableIds(node: BaseNode, variableToNodes: Map<string, Set<str
   }
 }
 
-// Get variable collections filtered by current page usage
-async function getVariableCollections(): Promise<PluginCollectionData[]> {
+// Get variable collections filtered by current page or selection usage
+async function getVariableCollections(useSelection: boolean = false): Promise<PluginCollectionData[]> {
   try {
-    const currentPage = figma.currentPage;
-    console.log('Scanning current page:', currentPage.name);
-
-    // Get all variable IDs used on current page and track which nodes use them
     const variableToNodes = new Map<string, Set<string>>();
-    getUsedVariableIds(currentPage, variableToNodes, { done: false });
-    console.log('Found', variableToNodes.size, 'variables used on page');
+
+    if (useSelection && figma.currentPage.selection.length > 0) {
+      // Scan selected nodes
+      console.log('Scanning selection:', figma.currentPage.selection.length, 'node(s)');
+      for (const node of figma.currentPage.selection) {
+        getUsedVariableIds(node, variableToNodes, { done: false });
+      }
+    } else {
+      // Scan entire page
+      const currentPage = figma.currentPage;
+      console.log('Scanning current page:', currentPage.name);
+      getUsedVariableIds(currentPage, variableToNodes, { done: false });
+    }
+
+    console.log('Found', variableToNodes.size, 'variables used');
 
     console.log('Used variable IDs (raw):', Array.from(variableToNodes.keys()).slice(0, 3), '...');
 
@@ -287,20 +298,31 @@ async function getVariableCollections(): Promise<PluginCollectionData[]> {
   }
 }
 
+// Track scan mode (page or selection)
+let scanMode = 'page' as 'page' | 'selection';
+
+// Track if initial load is done
+let initialLoadDone = false;
+
 // Load data when plugin starts
-(async () => {
+async function loadInitialData() {
+  if (initialLoadDone) return;
+
   try {
     console.log('Plugin started, fetching collections...');
-    const collectionsData = await getVariableCollections();
+    const useSelection = scanMode === 'selection';
+    const collectionsData = await getVariableCollections(useSelection);
     console.log('Collections fetched:', collectionsData.length, 'collections');
 
     const message: PluginMessage = {
       type: 'collections-data',
-      data: collectionsData
+      data: collectionsData,
+      scanMode: scanMode
     };
 
     console.log('Sending message to UI:', message);
     figma.ui.postMessage(message);
+    initialLoadDone = true;
   } catch (error) {
     console.error('Error in plugin:', error);
     const message: PluginMessage = {
@@ -310,16 +332,21 @@ async function getVariableCollections(): Promise<PluginCollectionData[]> {
 
     figma.ui.postMessage(message);
   }
-})();
+}
+
+// Start loading immediately
+loadInitialData();
 
 // Refresh data helper
 async function refreshData() {
   try {
-    const collectionsData = await getVariableCollections();
+    const useSelection = scanMode === 'selection';
+    const collectionsData = await getVariableCollections(useSelection);
 
     const message: PluginMessage = {
       type: 'collections-data',
-      data: collectionsData
+      data: collectionsData,
+      scanMode: scanMode
     };
 
     figma.ui.postMessage(message);
@@ -343,6 +370,15 @@ figma.on('currentpagechange', () => {
 figma.ui.onmessage = async (msg) => {
   if (msg.type === 'refresh') {
     await refreshData();
+  } else if (msg.type === 'ready') {
+    // UI is ready, ensure initial data is loaded
+    await loadInitialData();
+  } else if (msg.type === 'set-scan-mode') {
+    // Update scan mode and refresh
+    if (msg.scanMode) {
+      scanMode = msg.scanMode;
+      await refreshData();
+    }
   } else if (msg.type === 'select-nodes') {
     // Select nodes in Figma
     if (msg.nodeIds && msg.nodeIds.length > 0) {

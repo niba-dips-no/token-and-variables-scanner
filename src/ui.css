@@ -60,6 +60,39 @@ button:hover {
   background: #e0e0e0;
 }
 
+.btn-mode {
+  padding: 6px 12px;
+  background: #f5f5f5;
+  color: #666;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-mode:hover {
+  background: #e8e8e8;
+  opacity: 1;
+}
+
+.btn-mode-active {
+  padding: 6px 12px;
+  background: #0d99ff;
+  color: white;
+  border: 1px solid #0d99ff;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-mode-active:hover {
+  background: #0b85e0;
+  opacity: 1;
+}
+
 .search-bar {
   padding: 12px 20px;
   border-bottom: 1px solid #e5e5e5;
