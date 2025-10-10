@@ -1,0 +1,29 @@
+{
+  "name": "figma-modes-viewer",
+  "version": "1.0.0",
+  "description": "A Figma plugin to view and manage variable modes",
+  "main": "code.js",
+  "scripts": {
+    "build": "tsc && npm run build:ui && npm run build:html",
+    "build:ui": "esbuild src/ui.tsx --bundle --outfile=dist/ui.js --loader:.tsx=tsx --loader:.ts=tsx --format=iife",
+    "build:html": "node build-ui.js",
+    "watch": "concurrently \"tsc --watch\" \"npm run watch:ui\"",
+    "watch:ui": "esbuild src/ui.tsx --bundle --outfile=dist/ui.js --watch --loader:.tsx=tsx --loader:.ts=tsx --format=iife",
+    "dev": "npm run watch"
+  },
+  "keywords": ["figma", "plugin", "modes", "variables"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.90.0",
+    "@types/react": "^18.2.45",
+    "@types/react-dom": "^18.2.18",
+    "concurrently": "^8.2.2",
+    "esbuild": "^0.19.11",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}
