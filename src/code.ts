@@ -34,7 +34,21 @@ type PluginMessage = {
 }
 
 // Show the plugin UI
-figma.showUI(__html__, { width: 800, height: 600 });
+figma.showUI(__html__, {
+  width: 800,
+  height: 600,
+  themeColors: true,
+  title: "Modes Viewer"
+});
+
+// Restore previous window size
+figma.clientStorage.getAsync('windowSize').then((size: any) => {
+  if (size && size.w && size.h) {
+    figma.ui.resize(size.w, size.h);
+  }
+}).catch(() => {
+  // Ignore errors, use default size
+});
 
 // Extract the short variable ID from a full variable ID
 // Converts "VariableID:abc123def456/12345:678" to "12345:678"
@@ -404,6 +418,12 @@ figma.ui.onmessage = async (msg) => {
     } catch (error) {
       console.error('Error updating variable:', error);
       figma.notify('Failed to update variable', { error: true });
+    }
+  } else if (msg.type === 'resize') {
+    // Resize the window
+    if (msg.size && msg.size.w && msg.size.h) {
+      figma.ui.resize(msg.size.w, msg.size.h);
+      figma.clientStorage.setAsync('windowSize', msg.size);
     }
   } else if (msg.type === 'close') {
     figma.closePlugin();

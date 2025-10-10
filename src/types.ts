@@ -25,11 +25,12 @@ export interface CollectionData {
 }
 
 export interface PluginMessage {
-  type: 'collections-data' | 'error' | 'select-nodes' | 'update-variable';
+  type: 'collections-data' | 'error' | 'select-nodes' | 'update-variable' | 'resize';
   data?: CollectionData[];
   error?: string;
   nodeIds?: string[];
   variableId?: string;
   modeId?: string;
   value?: any;
+  size?: { w: number; h: number };
 }

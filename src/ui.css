@@ -80,10 +80,10 @@ button:hover {
 
 .collection-tabs {
   display: flex;
+  flex-wrap: wrap;
   padding: 0 20px;
   border-bottom: 1px solid #e5e5e5;
   background: #fafafa;
-  overflow-x: auto;
 }
 
 .tab {

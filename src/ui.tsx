@@ -364,13 +364,74 @@ function rgbToHex(r: number, g: number, b: number): string {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
 }
 
+// Resize handle component
+const ResizeHandle = () => {
+  React.useEffect(() => {
+    const corner = document.getElementById('resize-handle');
+    if (!corner) return;
+
+    const resizeWindow = (e: PointerEvent) => {
+      const size = {
+        w: Math.max(400, Math.floor(e.clientX + 5)),
+        h: Math.max(300, Math.floor(e.clientY + 5))
+      };
+      parent.postMessage({ pluginMessage: { type: 'resize', size } }, '*');
+    };
+
+    const handlePointerDown = (e: PointerEvent) => {
+      corner.onpointermove = resizeWindow;
+      corner.setPointerCapture(e.pointerId);
+    };
+
+    const handlePointerUp = (e: PointerEvent) => {
+      corner.onpointermove = null;
+      corner.releasePointerCapture(e.pointerId);
+    };
+
+    corner.addEventListener('pointerdown', handlePointerDown);
+    corner.addEventListener('pointerup', handlePointerUp);
+
+    return () => {
+      corner.removeEventListener('pointerdown', handlePointerDown);
+      corner.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, []);
+
+  return (
+    <svg
+      id="resize-handle"
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      style={{
+        position: 'fixed',
+        bottom: '4px',
+        right: '4px',
+        cursor: 'nwse-resize',
+        opacity: 0.3,
+        zIndex: 9999
+      }}
+    >
+      <path d="M16 0v16H0" fill="none" stroke="currentColor" strokeWidth="1" />
+      <path d="M6 16L16 6" stroke="currentColor" strokeWidth="1" />
+      <path d="M10 16L16 10" stroke="currentColor" strokeWidth="1" />
+      <path d="M14 16L16 14" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  );
+};
+
 console.log('UI script loaded');
 const rootElement = document.getElementById('root');
 console.log('Root element:', rootElement);
 
 if (rootElement) {
   const root = ReactDOM.createRoot(rootElement);
-  root.render(<App />);
+  root.render(
+    <>
+      <App />
+      <ResizeHandle />
+    </>
+  );
   console.log('App rendered');
 } else {
   console.error('Root element not found');
