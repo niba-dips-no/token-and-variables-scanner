@@ -9,7 +9,10 @@ const App = () => {
   const [error, setError] = React.useState<string | null>(null);
   const [searchTerm, setSearchTerm] = React.useState('');
   const [selectedCollection, setSelectedCollection] = React.useState<string | null>(null);
-  const [scanMode, setScanMode] = React.useState<'page' | 'selection'>('page');
+  const [scanMode, setScanMode] = React.useState<'page' | 'selection' | 'document'>('page');
+  const [selectionInfo, setSelectionInfo] = React.useState<string | undefined>(undefined);
+  const [hasScanned, setHasScanned] = React.useState(false);
+  const [scanProgress, setScanProgress] = React.useState<{ current: number; total: number; pageName: string } | null>(null);
 
   React.useEffect(() => {
     // Listen for messages from plugin code
@@ -21,8 +24,13 @@ const App = () => {
         console.log('Setting collections:', msg.data);
         setCollections(msg.data || []);
         setLoading(false);
+        setHasScanned(true);
+        setScanProgress(null);
         if (msg.scanMode) {
           setScanMode(msg.scanMode);
+        }
+        if (msg.selectionInfo !== undefined) {
+          setSelectionInfo(msg.selectionInfo);
         }
         if (msg.data && msg.data.length > 0 && !selectedCollection) {
           setSelectedCollection(msg.data[0].id);
@@ -30,6 +38,15 @@ const App = () => {
       } else if (msg.type === 'error') {
         setError(msg.error || 'Unknown error');
         setLoading(false);
+        setScanProgress(null);
+      } else if (msg.type === 'page-changed') {
+        // Reset scan state when page changes
+        setHasScanned(false);
+      } else if (msg.type === 'scan-progress') {
+        // Update scan progress
+        if (msg.current && msg.total && msg.pageName) {
+          setScanProgress({ current: msg.current, total: msg.total, pageName: msg.pageName });
+        }
       }
     };
 
@@ -62,8 +79,10 @@ const App = () => {
     }, '*');
   };
 
-  const handleScanModeChange = (mode: 'page' | 'selection') => {
+  const handleScanModeChange = (mode: 'page' | 'selection' | 'document') => {
     setScanMode(mode);
+    setLoading(true);
+    setScanProgress(null);
     parent.postMessage({
       pluginMessage: {
         type: 'set-scan-mode',
@@ -84,7 +103,27 @@ const App = () => {
   if (loading) {
     return (
       <div className="container">
-        <div className="loading">Loading variable collections...</div>
+        <div className="loading">
+          {scanProgress ? (
+            <>
+              <p>Scanning document...</p>
+              <p style={{ fontSize: '13px', marginTop: '8px' }}>
+                Page {scanProgress.current} of {scanProgress.total}: {scanProgress.pageName}
+              </p>
+              <div style={{ width: '200px', height: '4px', background: '#e5e5e5', borderRadius: '2px', marginTop: '12px' }}>
+                <div style={{
+                  width: `${(scanProgress.current / scanProgress.total) * 100}%`,
+                  height: '100%',
+                  background: '#0d99ff',
+                  borderRadius: '2px',
+                  transition: 'width 0.2s'
+                }} />
+              </div>
+            </>
+          ) : (
+            'Loading variable collections...'
+          )}
+        </div>
       </div>
     );
   }
@@ -120,11 +159,16 @@ const App = () => {
         <div>
           <h1>Modes Viewer</h1>
           <p style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>
-            Showing variables used on {scanMode === 'page' ? 'current page' : 'selection'}
+            Showing variables used {scanMode === 'page' ? 'on current page' : scanMode === 'selection' ? 'on selection' : 'in entire document'}
+            {(scanMode === 'selection' || scanMode === 'document') && selectionInfo && (
+              <span style={{ color: '#0d99ff', fontWeight: 500 }}> • {selectionInfo}</span>
+            )}
           </p>
         </div>
         <div className="header-actions">
-          <button onClick={handleRefresh} className="btn-secondary">Refresh</button>
+          <button onClick={handleRefresh} className="btn-secondary">
+            {hasScanned ? 'Refresh' : 'Scan'}
+          </button>
           <button onClick={handleClose} className="btn-secondary">Close</button>
         </div>
       </div>
@@ -143,6 +187,12 @@ const App = () => {
             className={scanMode === 'selection' ? 'btn-mode-active' : 'btn-mode'}
           >
             Selection
+          </button>
+          <button
+            onClick={() => handleScanModeChange('document')}
+            className={scanMode === 'document' ? 'btn-mode-active' : 'btn-mode'}
+          >
+            Document
           </button>
         </div>
         <input

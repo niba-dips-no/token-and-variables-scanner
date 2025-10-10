@@ -25,7 +25,7 @@ export interface CollectionData {
 }
 
 export interface PluginMessage {
-  type: 'collections-data' | 'error' | 'select-nodes' | 'update-variable' | 'resize' | 'set-scan-mode' | 'ready' | 'refresh';
+  type: 'collections-data' | 'error' | 'select-nodes' | 'update-variable' | 'resize' | 'set-scan-mode' | 'ready' | 'refresh' | 'page-changed' | 'scan-progress';
   data?: CollectionData[];
   error?: string;
   nodeIds?: string[];
@@ -33,5 +33,9 @@ export interface PluginMessage {
   modeId?: string;
   value?: any;
   size?: { w: number; h: number };
-  scanMode?: 'page' | 'selection';
+  scanMode?: 'page' | 'selection' | 'document';
+  selectionInfo?: string;
+  current?: number;
+  total?: number;
+  pageName?: string;
 }
