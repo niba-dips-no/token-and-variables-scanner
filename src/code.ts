@@ -5,6 +5,7 @@ type PluginVariableData = {
   resolvedType: VariableResolvedDataType;
   valuesByMode: Record<string, any>;
   nodeIds: string[];
+  isRemote: boolean;
 }
 
 type PluginModeData = {
@@ -17,13 +18,19 @@ type PluginCollectionData = {
   name: string;
   modes: PluginModeData[];
   variables: PluginVariableData[];
+  isRemote: boolean;
+  libraryName?: string;
+  isGhost?: boolean;
 }
 
 type PluginMessage = {
-  type: 'collections-data' | 'error' | 'select-nodes';
+  type: 'collections-data' | 'error' | 'select-nodes' | 'update-variable';
   data?: PluginCollectionData[];
   error?: string;
   nodeIds?: string[];
+  variableId?: string;
+  modeId?: string;
+  value?: any;
 }
 
 // Show the plugin UI
@@ -207,7 +214,8 @@ async function getVariableCollections(): Promise<PluginCollectionData[]> {
             name: variable.name,
             resolvedType: variable.resolvedType,
             valuesByMode,
-            nodeIds: varWithNodes.nodeIds
+            nodeIds: varWithNodes.nodeIds,
+            isRemote: collection.remote
           });
         }
       }
@@ -215,11 +223,42 @@ async function getVariableCollections(): Promise<PluginCollectionData[]> {
       // Only include collections that have variables used on the page
       if (variablesData.length > 0) {
         console.log(`Collection "${collection.name}" has ${variablesData.length} variables used on page`);
+
+        // Get library name from the collection key if it's remote
+        let libraryName: string | undefined = undefined;
+        let isGhost = false;
+
+        if (collection.remote && collection.key) {
+          // The key format is usually like "library_id/collection_name"
+          // Try to extract a readable name
+          const keyParts = collection.key.split('/');
+          libraryName = keyParts.length > 0 ? keyParts[keyParts.length - 1] : collection.key;
+
+          // Check if the library is actually available
+          // A ghost library will have remote=true but the key won't resolve to an actual library
+          try {
+            // Try to access library info through team library API
+            const teamLibraries = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+            const libraryExists = teamLibraries.some(lib => lib.key === collection.key);
+
+            if (!libraryExists) {
+              isGhost = true;
+              console.log(`Collection "${collection.name}" is a ghost (library not available)`);
+            }
+          } catch (e) {
+            // If we can't check, assume it might be a ghost
+            console.log('Could not verify library availability:', e);
+          }
+        }
+
         collectionsData.push({
           id: collection.id,
           name: collection.name,
           modes,
-          variables: variablesData
+          variables: variablesData,
+          isRemote: collection.remote,
+          libraryName: libraryName,
+          isGhost: isGhost
         });
       } else {
         console.log(`Collection "${collection.name}" has no variables used on page`);
@@ -304,6 +343,67 @@ figma.ui.onmessage = async (msg) => {
         figma.currentPage.selection = nodes;
         figma.viewport.scrollAndZoomIntoView(nodes);
       }
+    }
+  } else if (msg.type === 'update-variable') {
+    // Update variable value
+    try {
+      if (msg.variableId && msg.modeId !== undefined && msg.value !== undefined) {
+        const variable = await figma.variables.getVariableByIdAsync(msg.variableId);
+
+        if (variable) {
+          // Check if it's a remote (library) variable
+          const collection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
+
+          if (collection && collection.remote) {
+            // Check if it's a ghost library (remote but not available)
+            let isGhost = false;
+            try {
+              const teamLibraries = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+              const libraryExists = teamLibraries.some(lib => lib.key === collection.key);
+              isGhost = !libraryExists;
+            } catch (e) {
+              // If we can't check, assume it's not a ghost
+              isGhost = false;
+            }
+
+            // Only block editing if it's a valid (non-ghost) library
+            if (!isGhost) {
+              figma.notify('Cannot edit library variables. Open the library file to edit.', { error: true });
+              return;
+            } else {
+              console.log('Allowing edit of ghost library variable');
+            }
+          }
+
+          // Set the value based on type
+          const currentValue = variable.valuesByMode[msg.modeId];
+
+          // Parse the value based on variable type
+          let parsedValue = msg.value;
+
+          if (variable.resolvedType === 'FLOAT') {
+            parsedValue = parseFloat(msg.value);
+            if (isNaN(parsedValue)) {
+              figma.notify('Invalid number value', { error: true });
+              return;
+            }
+          } else if (variable.resolvedType === 'COLOR') {
+            // Value should already be in RGB format from UI
+            parsedValue = msg.value;
+          }
+
+          // Update the variable value
+          variable.setValueForMode(msg.modeId, parsedValue);
+
+          figma.notify(`Updated ${variable.name}`);
+
+          // Refresh the data to show the new value
+          await refreshData();
+        }
+      }
+    } catch (error) {
+      console.error('Error updating variable:', error);
+      figma.notify('Failed to update variable', { error: true });
     }
   } else if (msg.type === 'close') {
     figma.closePlugin();

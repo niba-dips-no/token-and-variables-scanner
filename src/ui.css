@@ -122,7 +122,49 @@ button:hover {
 .collection-info p {
   font-size: 12px;
   color: #666;
+  margin-bottom: 8px;
+}
+
+.library-info {
+  color: #0d99ff;
+}
+
+.library-notice {
+  background: #f0f7ff;
+  border: 1px solid #b3d9ff;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #1a5490;
   margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.ghost-badge {
+  color: #ff9500;
+  font-weight: 600;
+}
+
+.ghost-notice {
+  background: #fff4e6;
+  border: 1px solid #ffb84d;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #7a5200;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.ghost-badge-inline {
+  margin-left: 6px;
+  font-size: 12px;
+}
+
+.ghost-badge-tab {
+  margin-left: 6px;
+  font-size: 14px;
+  color: #ff9500;
 }
 
 .table-container {
@@ -266,4 +308,51 @@ tr:hover {
   text-align: center;
   color: #999;
   font-size: 13px;
+}
+
+/* Inline editing styles */
+.cell-value {
+  padding: 4px 8px;
+  border-radius: 4px;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+}
+
+.cell-value.editable {
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.cell-value.editable:hover {
+  background-color: #f5f5f5;
+}
+
+.cell-value.readonly {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.edit-input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 2px solid #0d99ff;
+  border-radius: 4px;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 12px;
+  outline: none;
+}
+
+.library-badge {
+  margin-left: 6px;
+  font-size: 12px;
+}
+
+.remote-variable {
+  background-color: #fafafa;
+}
+
+.remote-variable .cell-value {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

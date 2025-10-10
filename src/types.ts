@@ -6,6 +6,7 @@ export interface VariableData {
   resolvedType: VariableResolvedDataType;
   valuesByMode: Record<string, any>;
   nodeIds: string[];
+  isRemote: boolean;
 }
 
 export interface ModeData {
@@ -18,11 +19,17 @@ export interface CollectionData {
   name: string;
   modes: ModeData[];
   variables: VariableData[];
+  isRemote: boolean;
+  libraryName?: string;
+  isGhost?: boolean; // Library reference exists but library is unavailable
 }
 
 export interface PluginMessage {
-  type: 'collections-data' | 'error' | 'select-nodes';
+  type: 'collections-data' | 'error' | 'select-nodes' | 'update-variable';
   data?: CollectionData[];
   error?: string;
   nodeIds?: string[];
+  variableId?: string;
+  modeId?: string;
+  value?: any;
 }
