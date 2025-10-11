@@ -157,7 +157,7 @@ const App = () => {
     <div className="container">
       <div className="header">
         <div>
-          <h1>Modes Viewer</h1>
+          <h1>Token and Variables Scanner</h1>
           <p style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>
             Showing variables used {scanMode === 'page' ? 'on current page' : scanMode === 'selection' ? 'on selection' : 'in entire document'}
             {(scanMode === 'selection' || scanMode === 'document') && selectionInfo && (

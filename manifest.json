@@ -1,5 +1,5 @@
 {
-  "name": "Modes Viewer",
+  "name": "Token and Variables Scanner",
   "id": "modesviewer",
   "api": "1.0.0",
   "main": "dist/code.js",

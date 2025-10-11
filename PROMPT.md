@@ -1,10 +1,10 @@
-# Modes Viewer - Figma Plugin
+# Token and Variables Scanner - Figma Plugin
 
-A powerful Figma plugin for viewing and editing design tokens (variables) across multiple modes. See all your variables and their mode values at a glance, whether they're local or from design system libraries.
+A powerful Figma plugin for scanning and viewing design tokens (variables) across multiple modes. See all your variables and their mode values at a glance, whether they're local or from design system libraries.
 
 ## What It Does
 
-**Modes Viewer** helps designers and developers understand how variables are used across their designs by:
+**Token and Variables Scanner** helps designers and developers understand how variables are used across their designs by:
 
 - 📊 **Viewing all modes side-by-side** - Compare variable values across all modes in a clean table format
 - 🎯 **Scanning specific contexts** - View variables for the entire page OR just your current selection
