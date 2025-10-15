@@ -17,6 +17,7 @@ const App = () => {
   const [selectionInfo, setSelectionInfo] = React.useState<string | undefined>(undefined);
   const [hasScanned, setHasScanned] = React.useState(false);
   const [scanProgress, setScanProgress] = React.useState<{ current: number; total: number; pageName: string } | null>(null);
+  const [currentPageName, setCurrentPageName] = React.useState<string>('');
 
   React.useEffect(() => {
     // Listen for messages from plugin code
@@ -39,9 +40,10 @@ const App = () => {
         if (msg.selectionInfo !== undefined) {
           setSelectionInfo(msg.selectionInfo);
         }
-        if (msg.data && msg.data.length > 0 && !selectedCollection) {
-          setSelectedCollection(msg.data[0].id);
+        if (msg.pageName) {
+          setCurrentPageName(msg.pageName);
         }
+        // Don't auto-select any collection - let user focus on unbound elements first
       } else if (msg.type === 'error') {
         setError(msg.error || 'Unknown error');
         setLoading(false);
@@ -51,6 +53,7 @@ const App = () => {
         setHasScanned(false);
       } else if (msg.type === 'scan-progress') {
         // Update scan progress
+        console.log('Scan progress received:', msg.current, '/', msg.total, msg.pageName);
         if (msg.current && msg.total && msg.pageName) {
           setScanProgress({ current: msg.current, total: msg.total, pageName: msg.pageName });
         }
@@ -160,29 +163,11 @@ const App = () => {
 
   const activeCollection = filteredCollections.find(c => c.id === selectedCollection);
 
-  if (loading) {
+  if (loading && !hasScanned) {
     return (
       <div className="container">
         <div className="loading">
-          {scanProgress ? (
-            <>
-              <p>Scanning document...</p>
-              <p style={{ fontSize: '13px', marginTop: '8px' }}>
-                Page {scanProgress.current} of {scanProgress.total}: {scanProgress.pageName}
-              </p>
-              <div style={{ width: '200px', height: '4px', background: '#e5e5e5', borderRadius: '2px', marginTop: '12px' }}>
-                <div style={{
-                  width: `${(scanProgress.current / scanProgress.total) * 100}%`,
-                  height: '100%',
-                  background: '#0d99ff',
-                  borderRadius: '2px',
-                  transition: 'width 0.2s'
-                }} />
-              </div>
-            </>
-          ) : (
-            'Loading variable collections...'
-          )}
+          Loading variable collections...
         </div>
       </div>
     );
@@ -215,9 +200,28 @@ const App = () => {
 
   return (
     <div className="container">
+      {scanProgress && (
+        <div style={{ background: '#f8f8f8', padding: '8px 20px', borderBottom: '1px solid #e5e5e5' }}>
+          <div style={{ fontSize: '11px', color: '#666', marginBottom: '4px' }}>
+            Scanning page {scanProgress.current} of {scanProgress.total}: {scanProgress.pageName}
+          </div>
+          <div style={{ width: '100%', height: '3px', background: '#e5e5e5', borderRadius: '2px' }}>
+            <div style={{
+              width: `${(scanProgress.current / scanProgress.total) * 100}%`,
+              height: '100%',
+              background: '#0d99ff',
+              borderRadius: '2px',
+              transition: 'width 0.2s'
+            }} />
+          </div>
+        </div>
+      )}
       <div className="header">
         <div>
-          <h1>Token and Variables Scanner</h1>
+          <h1>
+            Token and Variables Scanner
+            {currentPageName && <span style={{ fontWeight: 400, fontSize: '16px' }}>: {currentPageName}</span>}
+          </h1>
           <p style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>
             Showing variables used {scanMode === 'page' ? 'on current page' : scanMode === 'selection' ? 'on selection' : 'in entire document'}
             {(scanMode === 'selection' || scanMode === 'document') && selectionInfo && (
