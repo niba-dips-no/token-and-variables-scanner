@@ -1,10 +1,14 @@
 import * as React from 'react';
 import * as ReactDOM from 'react-dom/client';
-import { CollectionData, PluginMessage } from './types';
+import { CollectionData, PluginMessage, UnboundElement, IgnoredElementInfo } from './types';
 import './ui.css';
 
 const App = () => {
   const [collections, setCollections] = React.useState<CollectionData[]>([]);
+  const [unboundElements, setUnboundElements] = React.useState<UnboundElement[]>([]);
+  const [ignoredElementIds, setIgnoredElementIds] = React.useState<string[]>([]);
+  const [ignoredElements, setIgnoredElements] = React.useState<IgnoredElementInfo[]>([]);
+  const [showIgnoredList, setShowIgnoredList] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [searchTerm, setSearchTerm] = React.useState('');
@@ -21,8 +25,11 @@ const App = () => {
       console.log('UI received message:', msg);
 
       if (msg.type === 'collections-data') {
+        console.log('UI received collections-data');
         console.log('Setting collections:', msg.data);
+        console.log('Setting unbound elements:', msg.unboundElements);
         setCollections(msg.data || []);
+        setUnboundElements(msg.unboundElements || []);
         setLoading(false);
         setHasScanned(true);
         setScanProgress(null);
@@ -47,11 +54,21 @@ const App = () => {
         if (msg.current && msg.total && msg.pageName) {
           setScanProgress({ current: msg.current, total: msg.total, pageName: msg.pageName });
         }
+      } else if (msg.type === 'ignored-elements-list') {
+        // Received list of ignored element IDs and info
+        if (msg.ignoredElementIds) {
+          setIgnoredElementIds(msg.ignoredElementIds);
+        }
+        if (msg.ignoredElements) {
+          setIgnoredElements(msg.ignoredElements);
+        }
       }
     };
 
     // Tell plugin that UI is ready
     parent.postMessage({ pluginMessage: { type: 'ready' } }, '*');
+    // Request ignored elements list on mount
+    parent.postMessage({ pluginMessage: { type: 'get-ignored-elements' } }, '*');
   }, [selectedCollection]);
 
   const handleRefresh = () => {
@@ -77,6 +94,49 @@ const App = () => {
         value
       }
     }, '*');
+  };
+
+  const handleIgnoreElement = (elementId: string) => {
+    parent.postMessage({
+      pluginMessage: {
+        type: 'ignore-element',
+        elementId
+      }
+    }, '*');
+  };
+
+  const handleIgnoreValue = (valueType: 'stroke' | 'fill' | 'text-no-style', value: string) => {
+    parent.postMessage({
+      pluginMessage: {
+        type: 'ignore-value',
+        valueType,
+        value
+      }
+    }, '*');
+  };
+
+  const handleUnignoreElement = (elementId: string) => {
+    parent.postMessage({
+      pluginMessage: {
+        type: 'unignore-element',
+        elementId
+      }
+    }, '*');
+  };
+
+  const handleUnignoreValue = (valueType: 'stroke' | 'fill' | 'text-no-style', value: string) => {
+    parent.postMessage({
+      pluginMessage: {
+        type: 'unignore-value',
+        valueType,
+        value
+      }
+    }, '*');
+  };
+
+  const handleShowIgnoredList = () => {
+    setShowIgnoredList(true);
+    parent.postMessage({ pluginMessage: { type: 'get-ignored-elements' } }, '*');
   };
 
   const handleScanModeChange = (mode: 'page' | 'selection' | 'document') => {
@@ -166,6 +226,13 @@ const App = () => {
           </p>
         </div>
         <div className="header-actions">
+          <button
+            onClick={handleShowIgnoredList}
+            className="btn-secondary"
+            title="View and manage hidden elements"
+          >
+            Hidden ({ignoredElements.length})
+          </button>
           <button onClick={handleRefresh} className="btn-secondary">
             {hasScanned ? 'Refresh' : 'Scan'}
           </button>
@@ -203,7 +270,161 @@ const App = () => {
         />
       </div>
 
-      <div className="collection-tabs">
+      <div className="content">
+        {unboundElements.length > 0 && (
+          <div className="unbound-section">
+          <div className="unbound-header">
+            <h3>⚠️ Unbound Elements ({unboundElements.length})</h3>
+            <p>Elements not using design tokens or text styles</p>
+          </div>
+          <div className="unbound-categories">
+            {['text-no-style', 'text-partial-style', 'fill-no-variable', 'stroke-no-variable'].map(category => {
+              const categoryElements = unboundElements.filter(el => el.type === category);
+              if (categoryElements.length === 0) return null;
+
+              const categoryLabels = {
+                'text-no-style': 'Text without text style',
+                'text-partial-style': 'Text with partial styling',
+                'fill-no-variable': 'Fill without variable',
+                'stroke-no-variable': 'Stroke without variable'
+              };
+
+              return (
+                <div key={category} className="unbound-category">
+                  <h4>{categoryLabels[category as keyof typeof categoryLabels]} ({categoryElements.length})</h4>
+                  <ul className="unbound-list">
+                    {categoryElements.map(element => {
+                      // Extract value and type for "ignore all" functionality
+                      const getValueInfo = () => {
+                        if (element.type === 'stroke-no-variable' || element.type === 'fill-no-variable') {
+                          // Extract hex color from details like "COMPONENT_SET - #9747FF"
+                          if (element.details) {
+                            const match = element.details.match(/#[0-9A-F]{6}/i);
+                            if (match) {
+                              const valueType = element.type === 'stroke-no-variable' ? 'stroke' : 'fill';
+                              return { valueType: valueType as 'stroke' | 'fill', value: match[0] };
+                            }
+                          }
+                        } else if (element.type === 'text-no-style' || element.type === 'text-partial-style') {
+                          return { valueType: 'text-no-style' as const, value: 'text-no-style' };
+                        }
+                        return null;
+                      };
+
+                      const valueInfo = getValueInfo();
+
+                      return (
+                        <li key={element.id} className="unbound-item">
+                          <div className="unbound-item-content">
+                            <button
+                              className="unbound-link"
+                              onClick={() => handleSelectNodes([element.id])}
+                              title="Click to select this element"
+                            >
+                              {element.name}
+                            </button>
+                            {element.details && <span className="element-details"> - {element.details}</span>}
+                          </div>
+                          <div className="unbound-item-actions">
+                            <button
+                              className="ignore-btn"
+                              onClick={() => handleIgnoreElement(element.id)}
+                              title="Hide only this element"
+                            >
+                              ✕
+                            </button>
+                            {valueInfo && (
+                              <button
+                                className="ignore-all-btn"
+                                onClick={() => handleIgnoreValue(valueInfo.valueType, valueInfo.value)}
+                                title={`Hide all elements with ${valueInfo.value}`}
+                              >
+                                ✕✕
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+          </div>
+        )}
+
+        {showIgnoredList && ignoredElements.length > 0 && (
+          <div className="ignored-section">
+          <div className="ignored-header">
+            <h3>Hidden Elements ({ignoredElements.length})</h3>
+            <button
+              className="btn-close-ignored"
+              onClick={() => setShowIgnoredList(false)}
+              title="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <p style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
+            These elements are hidden from scans. Click "Show" to restore them.
+          </p>
+          <ul className="ignored-list">
+            {ignoredElements.map((element, index) => {
+              const key = element.ignoreType === 'by-id' ? element.id : `value-${index}`;
+
+              if (element.ignoreType === 'by-value') {
+                // Display for by-value ignore
+                return (
+                  <li key={key} className="ignored-item ignored-item-by-value">
+                    <div className="ignored-item-info">
+                      <div className="ignored-name">
+                        {element.valueType === 'stroke' && `Stroke: ${element.value}`}
+                        {element.valueType === 'fill' && `Fill: ${element.value}`}
+                        {element.valueType === 'text-no-style' && element.value}
+                      </div>
+                      <div className="ignored-meta">
+                        <span className="ignored-type">ALL WITH THIS VALUE</span>
+                        {element.affectedCount && <span className="ignored-details"> • affects {element.affectedCount} elements</span>}
+                      </div>
+                    </div>
+                    <button
+                      className="unignore-btn"
+                      onClick={() => handleUnignoreValue(element.valueType!, element.value!)}
+                      title="Show all elements with this value"
+                    >
+                      Show
+                    </button>
+                  </li>
+                );
+              } else {
+                // Display for by-id ignore
+                return (
+                  <li key={key} className="ignored-item">
+                    <div className="ignored-item-info">
+                      <div className="ignored-name">{element.name}</div>
+                      <div className="ignored-meta">
+                        <span className="ignored-type">{element.type}</span>
+                        {element.details && <span className="ignored-details"> • {element.details}</span>}
+                        {element.pageName && <span className="ignored-details"> • {element.pageName}</span>}
+                      </div>
+                    </div>
+                    <button
+                      className="unignore-btn"
+                      onClick={() => handleUnignoreElement(element.id!)}
+                      title="Show this element in future scans"
+                    >
+                      Show
+                    </button>
+                  </li>
+                );
+              }
+            })}
+          </ul>
+          </div>
+        )}
+
+        <div className="collection-tabs">
         {collections.map(collection => (
           <button
             key={collection.id}
@@ -214,11 +435,11 @@ const App = () => {
             {collection.isGhost && <span className="ghost-badge-tab" title="Library unavailable">⚠️</span>}
           </button>
         ))}
-      </div>
+        </div>
 
-      {activeCollection && (
-        <div className="content">
-          <div className="collection-info">
+        {activeCollection && (
+          <>
+            <div className="collection-info">
             <h2>{activeCollection.name}</h2>
             <p>
               {activeCollection.variables.length} variables, {activeCollection.modes.length} modes
@@ -296,8 +517,9 @@ const App = () => {
               </table>
             </div>
           )}
-        </div>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 };

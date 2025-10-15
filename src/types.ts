@@ -24,14 +24,40 @@ export interface CollectionData {
   isGhost?: boolean; // Library reference exists but library is unavailable
 }
 
+export interface UnboundElement {
+  id: string;
+  name: string;
+  type: 'text-no-style' | 'text-partial-style' | 'fill-no-variable' | 'stroke-no-variable';
+  details?: string;
+}
+
+export interface IgnoredElementInfo {
+  // For by-id ignores
+  id?: string;
+  name?: string;
+  type?: string;
+  details?: string;
+  // For by-value ignores
+  ignoreType: 'by-id' | 'by-value';
+  valueType?: 'stroke' | 'fill' | 'text-no-style';
+  value?: string; // The actual color/property value
+  affectedCount?: number; // How many elements this affects
+  pageName?: string; // For by-id ignores, which page it's on
+}
+
 export interface PluginMessage {
-  type: 'collections-data' | 'error' | 'select-nodes' | 'update-variable' | 'resize' | 'set-scan-mode' | 'ready' | 'refresh' | 'page-changed' | 'scan-progress';
+  type: 'collections-data' | 'error' | 'select-nodes' | 'update-variable' | 'resize' | 'set-scan-mode' | 'ready' | 'refresh' | 'page-changed' | 'scan-progress' | 'ignore-element' | 'ignore-value' | 'unignore-element' | 'unignore-value' | 'get-ignored-elements' | 'ignored-elements-list';
   data?: CollectionData[];
+  unboundElements?: UnboundElement[];
+  ignoredElementIds?: string[];
+  ignoredElements?: IgnoredElementInfo[];
   error?: string;
   nodeIds?: string[];
+  elementId?: string;
+  valueType?: 'stroke' | 'fill' | 'text-no-style';
+  value?: string;
   variableId?: string;
   modeId?: string;
-  value?: any;
   size?: { w: number; h: number };
   scanMode?: 'page' | 'selection' | 'document';
   selectionInfo?: string;

@@ -389,3 +389,307 @@ tr:hover {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* Unbound elements section */
+.unbound-section {
+  background: #fff9e6;
+  border: 1px solid #ffd966;
+  border-left: 4px solid #ff9500;
+  border-radius: 6px;
+  margin: 12px 20px;
+  padding: 16px;
+}
+
+.unbound-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #7a5200;
+  margin-bottom: 4px;
+}
+
+.unbound-header p {
+  font-size: 12px;
+  color: #7a5200;
+  margin-bottom: 12px;
+}
+
+.unbound-categories {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.unbound-category {
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.unbound-category h4 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 8px;
+}
+
+.unbound-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.unbound-list li {
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.unbound-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  transition: background-color 0.15s;
+}
+
+.unbound-item:hover {
+  background-color: #f8f8f8;
+}
+
+.unbound-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.unbound-item-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.unbound-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 500;
+  color: #0d99ff;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+}
+
+.unbound-link:hover {
+  text-decoration: underline;
+  opacity: 1;
+}
+
+.element-details {
+  color: #666;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.ignore-btn {
+  background: transparent;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: #999;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.ignore-btn:hover {
+  background: #ff4444;
+  border-color: #ff4444;
+  color: white;
+  opacity: 1;
+}
+
+.ignore-all-btn {
+  background: transparent;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #999;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.ignore-all-btn:hover {
+  background: #ff8800;
+  border-color: #ff8800;
+  color: white;
+  opacity: 1;
+}
+
+/* Ignored elements management */
+.btn-show-ignored {
+  background: #e8e8e8;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #666;
+  cursor: pointer;
+  margin-left: auto;
+  transition: all 0.15s;
+}
+
+.btn-show-ignored:hover {
+  background: #d8d8d8;
+  opacity: 1;
+}
+
+.unbound-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ignored-section {
+  background: #f5f5f5;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  margin: 12px 20px;
+  padding: 16px;
+}
+
+.ignored-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.ignored-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.btn-close-ignored {
+  background: transparent;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #999;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-close-ignored:hover {
+  background: #e0e0e0;
+  border-color: #999;
+  color: #666;
+  opacity: 1;
+}
+
+.ignored-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.ignored-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: white;
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+  margin-bottom: 6px;
+  transition: background-color 0.15s;
+}
+
+.ignored-item:hover {
+  background-color: #fafafa;
+}
+
+.ignored-item-by-value {
+  background: #fff9e6;
+  border-left: 3px solid #ff8800;
+}
+
+.ignored-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ignored-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1a1a1a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ignored-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.ignored-type {
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.ignored-details {
+  color: #999;
+  font-style: italic;
+}
+
+.unignore-btn {
+  background: #0d99ff;
+  border: 1px solid #0d99ff;
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  color: white;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.unignore-btn:hover {
+  background: #0b85e0;
+  border-color: #0b85e0;
+  opacity: 1;
+}

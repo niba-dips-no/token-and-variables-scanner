@@ -23,11 +23,29 @@ type PluginCollectionData = {
   isGhost?: boolean;
 }
 
+type UnboundElement = {
+  id: string;
+  name: string;
+  type: 'text-no-style' | 'text-partial-style' | 'fill-no-variable' | 'stroke-no-variable';
+  details?: string;
+};
+
+type IgnoredElementInfo = {
+  id: string;
+  name: string;
+  type: string;
+  details: string;
+};
+
 type PluginMessage = {
-  type: 'collections-data' | 'error' | 'select-nodes' | 'update-variable' | 'resize' | 'set-scan-mode' | 'ready' | 'refresh' | 'page-changed' | 'scan-progress';
+  type: 'collections-data' | 'error' | 'select-nodes' | 'update-variable' | 'resize' | 'set-scan-mode' | 'ready' | 'refresh' | 'page-changed' | 'scan-progress' | 'ignore-element' | 'unignore-element' | 'get-ignored-elements' | 'ignored-elements-list';
   data?: PluginCollectionData[];
+  unboundElements?: UnboundElement[];
+  ignoredElementIds?: string[];
+  ignoredElements?: IgnoredElementInfo[];
   error?: string;
   nodeIds?: string[];
+  elementId?: string;
   variableId?: string;
   modeId?: string;
   value?: any;
@@ -72,6 +90,119 @@ function extractVariableId(fullId: string): string {
   }
 
   return fullId;
+}
+
+// Helper function to convert RGB to hex
+function rgbToHex(r: number, g: number, b: number): string {
+  const toHex = (n: number) => {
+    const hex = Math.round(n * 255).toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  };
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+}
+
+// Get document-specific storage keys for ignored elements
+function getIgnoreByIdKey(): string {
+  return `ignoredUnboundElements_byId_${figma.root.id}`;
+}
+
+function getIgnoreByValueKey(): string {
+  return `ignoredUnboundElements_byValue_${figma.root.id}`;
+}
+
+// Scan for elements not using design tokens
+function scanUnboundElements(node: BaseNode, unboundElements: UnboundElement[]): void {
+  // Check text nodes
+  if (node.type === 'TEXT') {
+    const textNode = node as TextNode;
+
+    // Check if text style is not bound
+    if (!textNode.textStyleId || textNode.textStyleId === '') {
+      unboundElements.push({
+        id: textNode.id,
+        name: textNode.name,
+        type: 'text-no-style',
+        details: `Text: "${textNode.characters.substring(0, 30)}${textNode.characters.length > 30 ? '...' : ''}"`
+      });
+    }
+
+    // Check for partial styling (has some properties but not using text style)
+    // Check if fills are not using color variables
+    if (textNode.fills && textNode.fills !== figma.mixed && Array.isArray(textNode.fills)) {
+      const hasBoundFills = 'boundVariables' in textNode &&
+                            textNode.boundVariables &&
+                            'fills' in textNode.boundVariables;
+
+      if (!hasBoundFills && textNode.fills.length > 0) {
+        const solidFills = textNode.fills.filter(f => f.type === 'SOLID' && f.visible !== false);
+        if (solidFills.length > 0) {
+          // Get text color details
+          const firstFill = solidFills[0] as SolidPaint;
+          const { r, g, b } = firstFill.color;
+          const hex = rgbToHex(r, g, b);
+          unboundElements.push({
+            id: textNode.id,
+            name: textNode.name,
+            type: 'text-partial-style',
+            details: `Text color ${hex} not using variable`
+          });
+        }
+      }
+    }
+  }
+
+  // Check fills on other node types
+  if ('fills' in node && node.fills && node.fills !== figma.mixed && Array.isArray(node.fills)) {
+    const hasBoundFills = 'boundVariables' in node &&
+                          node.boundVariables &&
+                          'fills' in node.boundVariables;
+
+    if (!hasBoundFills) {
+      const solidFills = node.fills.filter(f => f.type === 'SOLID' && f.visible !== false);
+      if (solidFills.length > 0 && node.type !== 'TEXT') {
+        // Get fill color details
+        const firstFill = solidFills[0] as SolidPaint;
+        const { r, g, b } = firstFill.color;
+        const hex = rgbToHex(r, g, b);
+        unboundElements.push({
+          id: node.id,
+          name: node.name,
+          type: 'fill-no-variable',
+          details: `${node.type} - ${hex}`
+        });
+      }
+    }
+  }
+
+  // Check strokes
+  if ('strokes' in node && node.strokes && Array.isArray(node.strokes)) {
+    const hasBoundStrokes = 'boundVariables' in node &&
+                            node.boundVariables &&
+                            'strokes' in node.boundVariables;
+
+    if (!hasBoundStrokes) {
+      const visibleStrokes = node.strokes.filter(s => s.type === 'SOLID' && s.visible !== false);
+      if (visibleStrokes.length > 0) {
+        // Get stroke color details
+        const firstStroke = visibleStrokes[0] as SolidPaint;
+        const { r, g, b } = firstStroke.color;
+        const hex = rgbToHex(r, g, b);
+        unboundElements.push({
+          id: node.id,
+          name: node.name,
+          type: 'stroke-no-variable',
+          details: `${node.type} - ${hex}`
+        });
+      }
+    }
+  }
+
+  // Recursively check children
+  if ('children' in node) {
+    for (const child of node.children) {
+      scanUnboundElements(child, unboundElements);
+    }
+  }
 }
 
 // Get all variable IDs used on the current page and track which nodes use them
@@ -131,9 +262,10 @@ function getUsedVariableIds(node: BaseNode, variableToNodes: Map<string, Set<str
 }
 
 // Get variable collections filtered by current page, selection, or entire document
-async function getVariableCollections(mode: 'page' | 'selection' | 'document' = 'page'): Promise<{ collections: PluginCollectionData[], selectionInfo?: string }> {
+async function getVariableCollections(mode: 'page' | 'selection' | 'document' = 'page'): Promise<{ collections: PluginCollectionData[], unboundElements: UnboundElement[], selectionInfo?: string }> {
   try {
     const variableToNodes = new Map<string, Set<string>>();
+    const unboundElements: UnboundElement[] = [];
     let selectionInfo: string | undefined = undefined;
 
     if (mode === 'selection' && figma.currentPage.selection.length > 0) {
@@ -152,6 +284,7 @@ async function getVariableCollections(mode: 'page' | 'selection' | 'document' = 
 
       for (const node of figma.currentPage.selection) {
         getUsedVariableIds(node, variableToNodes, { done: false });
+        scanUnboundElements(node, unboundElements);
       }
     } else if (mode === 'document') {
       // Scan all pages incrementally
@@ -174,6 +307,7 @@ async function getVariableCollections(mode: 'page' | 'selection' | 'document' = 
         });
 
         getUsedVariableIds(page, variableToNodes, { done: i === 0 });
+        scanUnboundElements(page, unboundElements);
 
         // Allow UI to stay responsive
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -183,6 +317,7 @@ async function getVariableCollections(mode: 'page' | 'selection' | 'document' = 
       const currentPage = figma.currentPage;
       console.log('Scanning current page:', currentPage.name);
       getUsedVariableIds(currentPage, variableToNodes, { done: false });
+      scanUnboundElements(currentPage, unboundElements);
     }
 
     console.log('Found', variableToNodes.size, 'variables used');
@@ -332,7 +467,44 @@ async function getVariableCollections(mode: 'page' | 'selection' | 'document' = 
     }
 
     console.log('Total collections to display:', collectionsData.length);
-    return { collections: collectionsData, selectionInfo };
+    console.log('Found', unboundElements.length, 'unbound elements');
+
+    // Filter out ignored elements (both by-id and by-value)
+    const ignoredByIds = await figma.clientStorage.getAsync(getIgnoreByIdKey()) || [];
+    const ignoredByValues = await figma.clientStorage.getAsync(getIgnoreByValueKey()) || [];
+
+    const filteredUnboundElements = unboundElements.filter(el => {
+      // Check if ignored by ID
+      if (ignoredByIds.includes(el.id)) {
+        return false;
+      }
+
+      // Check if ignored by value
+      for (const ignored of ignoredByValues) {
+        if (ignored.valueType === 'stroke' && el.type === 'stroke-no-variable') {
+          if (el.details) {
+            const match = el.details.match(/#[0-9A-F]{6}/i);
+            if (match && match[0] === ignored.value) {
+              return false;
+            }
+          }
+        } else if (ignored.valueType === 'fill' && el.type === 'fill-no-variable') {
+          if (el.details) {
+            const match = el.details.match(/#[0-9A-F]{6}/i);
+            if (match && match[0] === ignored.value) {
+              return false;
+            }
+          }
+        } else if (ignored.valueType === 'text-no-style' && (el.type === 'text-no-style' || el.type === 'text-partial-style')) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+    console.log('After filtering ignored:', filteredUnboundElements.length, 'unbound elements (filtered from', unboundElements.length, ')');
+
+    return { collections: collectionsData, unboundElements: filteredUnboundElements, selectionInfo };
   } catch (error) {
     console.error('Error getting variable collections:', error);
     throw error;
@@ -357,6 +529,7 @@ async function loadInitialData() {
     const message: PluginMessage = {
       type: 'collections-data',
       data: result.collections,
+      unboundElements: result.unboundElements,
       scanMode: scanMode,
       selectionInfo: result.selectionInfo
     };
@@ -375,8 +548,8 @@ async function loadInitialData() {
   }
 }
 
-// Start loading immediately
-loadInitialData();
+// Don't start loading immediately - wait for UI to be ready
+// loadInitialData();
 
 // Refresh data helper
 async function refreshData() {
@@ -386,6 +559,7 @@ async function refreshData() {
     const message: PluginMessage = {
       type: 'collections-data',
       data: result.collections,
+      unboundElements: result.unboundElements,
       scanMode: scanMode,
       selectionInfo: result.selectionInfo
     };
@@ -499,6 +673,386 @@ figma.ui.onmessage = async (msg) => {
       console.error('Error updating variable:', error);
       figma.notify('Failed to update variable', { error: true });
     }
+  } else if (msg.type === 'ignore-element') {
+    // Add element to ignore list by ID (per-document)
+    if (msg.elementId) {
+      const storageKey = getIgnoreByIdKey();
+      const ignoredElements = await figma.clientStorage.getAsync(storageKey) || [];
+      if (!ignoredElements.includes(msg.elementId)) {
+        ignoredElements.push(msg.elementId);
+        await figma.clientStorage.setAsync(storageKey, ignoredElements);
+        console.log('Element ignored by ID. Storage key:', storageKey, 'Total ignored:', ignoredElements.length);
+        figma.notify('Element hidden from future scans');
+      }
+      // Refresh to update the display AND send updated ignored list
+      await refreshData();
+
+      // Fetch enriched data for all ignored elements
+      const ignoredElementIds = await figma.clientStorage.getAsync(storageKey) || [];
+      const ignoredElementsInfo: any[] = [];
+      for (const elementId of ignoredElementIds) {
+        const node = figma.getNodeById(elementId);
+        if (node) {
+          let details = '';
+
+          // Get color info for strokes/fills
+          if ('strokes' in node && node.strokes && Array.isArray(node.strokes) && node.strokes.length > 0) {
+            const firstStroke = node.strokes[0] as SolidPaint;
+            if (firstStroke && firstStroke.type === 'SOLID' && firstStroke.color) {
+              const { r, g, b } = firstStroke.color;
+              const hex = rgbToHex(r, g, b);
+              details = `Stroke: ${hex}`;
+            }
+          } else if ('fills' in node && node.fills && Array.isArray(node.fills) && node.fills.length > 0) {
+            const firstFill = node.fills[0] as SolidPaint;
+            if (firstFill && firstFill.type === 'SOLID' && firstFill.color) {
+              const { r, g, b } = firstFill.color;
+              const hex = rgbToHex(r, g, b);
+              details = `Fill: ${hex}`;
+            }
+          }
+
+          // Check if it's text without style
+          if (node.type === 'TEXT') {
+            const textNode = node as TextNode;
+            if (!textNode.textStyleId) {
+              details = 'Text without style';
+            }
+          }
+
+          ignoredElementsInfo.push({
+            id: elementId,
+            name: node.name,
+            type: node.type,
+            details: details
+          });
+        } else {
+          // Node was deleted
+          ignoredElementsInfo.push({
+            id: elementId,
+            name: '(Deleted)',
+            type: 'UNKNOWN',
+            details: 'Element no longer exists'
+          });
+        }
+      }
+
+      figma.ui.postMessage({
+        type: 'ignored-elements-list',
+        ignoredElementIds: ignoredElementIds,
+        ignoredElements: ignoredElementsInfo
+      });
+    }
+  } else if (msg.type === 'ignore-value') {
+    // Add value to ignore list (ignores all elements with this value)
+    if (msg.valueType && msg.value) {
+      const storageKey = getIgnoreByValueKey();
+      const ignoredValues = await figma.clientStorage.getAsync(storageKey) || [];
+
+      // Check if this value/type combo already exists
+      const exists = ignoredValues.some((item: any) =>
+        item.valueType === msg.valueType && item.value === msg.value
+      );
+
+      if (!exists) {
+        ignoredValues.push({ valueType: msg.valueType, value: msg.value });
+        await figma.clientStorage.setAsync(storageKey, ignoredValues);
+        console.log('Value ignored:', msg.valueType, msg.value, 'Total value ignores:', ignoredValues.length);
+        figma.notify(`All ${msg.valueType}s with ${msg.value} hidden from future scans`);
+      }
+
+      // Refresh to update the display
+      await refreshData();
+
+      // Send updated ignored list
+      const ignoredByIds = await figma.clientStorage.getAsync(getIgnoreByIdKey()) || [];
+      const updatedIgnoredValues = await figma.clientStorage.getAsync(storageKey) || [];
+      const ignoredElementsInfo: any[] = [];
+
+      // Add by-id ignores
+      for (const elementId of ignoredByIds) {
+        const node = figma.getNodeById(elementId);
+        if (node) {
+          let details = '';
+          if ('strokes' in node && node.strokes && Array.isArray(node.strokes) && node.strokes.length > 0) {
+            const firstStroke = node.strokes[0] as SolidPaint;
+            if (firstStroke && firstStroke.type === 'SOLID' && firstStroke.color) {
+              const { r, g, b } = firstStroke.color;
+              details = `Stroke: ${rgbToHex(r, g, b)}`;
+            }
+          } else if ('fills' in node && node.fills && Array.isArray(node.fills) && node.fills.length > 0) {
+            const firstFill = node.fills[0] as SolidPaint;
+            if (firstFill && firstFill.type === 'SOLID' && firstFill.color) {
+              const { r, g, b } = firstFill.color;
+              details = `Fill: ${rgbToHex(r, g, b)}`;
+            }
+          }
+          if (node.type === 'TEXT' && !(node as TextNode).textStyleId) {
+            details = 'Text without style';
+          }
+          ignoredElementsInfo.push({
+            ignoreType: 'by-id',
+            id: elementId,
+            name: node.name,
+            type: node.type,
+            details: details,
+            pageName: node.parent && node.parent.type === 'PAGE' ? node.parent.name : undefined
+          });
+        } else {
+          ignoredElementsInfo.push({
+            ignoreType: 'by-id',
+            id: elementId,
+            name: '(Deleted)',
+            type: 'UNKNOWN',
+            details: 'Element no longer exists'
+          });
+        }
+      }
+
+      // Add by-value ignores
+      for (const ignored of updatedIgnoredValues) {
+        let displayValue = ignored.value;
+        if (ignored.valueType === 'text-no-style') {
+          displayValue = 'Text without style';
+        }
+        ignoredElementsInfo.push({
+          ignoreType: 'by-value',
+          valueType: ignored.valueType,
+          value: displayValue
+        });
+      }
+
+      figma.ui.postMessage({
+        type: 'ignored-elements-list',
+        ignoredElementIds: ignoredByIds,
+        ignoredElements: ignoredElementsInfo
+      });
+    }
+  } else if (msg.type === 'unignore-element') {
+    // Remove element from ignore list by ID
+    if (msg.elementId) {
+      const storageKey = getIgnoreByIdKey();
+      const ignoredElements = await figma.clientStorage.getAsync(storageKey) || [];
+      const filtered = ignoredElements.filter((id: string) => id !== msg.elementId);
+      await figma.clientStorage.setAsync(storageKey, filtered);
+      console.log('Element unignored by ID. Storage key:', storageKey, 'Total ignored:', filtered.length);
+      figma.notify('Element will appear in future scans');
+      // Refresh to update the display AND send updated ignored list
+      await refreshData();
+
+      // Fetch enriched data for remaining ignored elements
+      const ignoredElementIds = await figma.clientStorage.getAsync(storageKey) || [];
+      const ignoredElementsInfo: any[] = [];
+      for (const elementId of ignoredElementIds) {
+        const node = figma.getNodeById(elementId);
+        if (node) {
+          let details = '';
+
+          // Get color info for strokes/fills
+          if ('strokes' in node && node.strokes && Array.isArray(node.strokes) && node.strokes.length > 0) {
+            const firstStroke = node.strokes[0] as SolidPaint;
+            if (firstStroke && firstStroke.type === 'SOLID' && firstStroke.color) {
+              const { r, g, b } = firstStroke.color;
+              const hex = rgbToHex(r, g, b);
+              details = `Stroke: ${hex}`;
+            }
+          } else if ('fills' in node && node.fills && Array.isArray(node.fills) && node.fills.length > 0) {
+            const firstFill = node.fills[0] as SolidPaint;
+            if (firstFill && firstFill.type === 'SOLID' && firstFill.color) {
+              const { r, g, b } = firstFill.color;
+              const hex = rgbToHex(r, g, b);
+              details = `Fill: ${hex}`;
+            }
+          }
+
+          // Check if it's text without style
+          if (node.type === 'TEXT') {
+            const textNode = node as TextNode;
+            if (!textNode.textStyleId) {
+              details = 'Text without style';
+            }
+          }
+
+          ignoredElementsInfo.push({
+            id: elementId,
+            name: node.name,
+            type: node.type,
+            details: details
+          });
+        } else {
+          // Node was deleted
+          ignoredElementsInfo.push({
+            id: elementId,
+            name: '(Deleted)',
+            type: 'UNKNOWN',
+            details: 'Element no longer exists'
+          });
+        }
+      }
+
+      figma.ui.postMessage({
+        type: 'ignored-elements-list',
+        ignoredElementIds: ignoredElementIds,
+        ignoredElements: ignoredElementsInfo
+      });
+    }
+  } else if (msg.type === 'unignore-value') {
+    // Remove value from ignore list
+    if (msg.valueType && msg.value) {
+      const storageKey = getIgnoreByValueKey();
+      const ignoredValues = await figma.clientStorage.getAsync(storageKey) || [];
+      const filtered = ignoredValues.filter((item: any) =>
+        !(item.valueType === msg.valueType && item.value === msg.value)
+      );
+      await figma.clientStorage.setAsync(storageKey, filtered);
+      console.log('Value unignored:', msg.valueType, msg.value, 'Total value ignores:', filtered.length);
+      figma.notify('Value will appear in future scans');
+
+      // Refresh to update the display
+      await refreshData();
+
+      // Send updated ignored list
+      const ignoredByIds = await figma.clientStorage.getAsync(getIgnoreByIdKey()) || [];
+      const updatedIgnoredValues = await figma.clientStorage.getAsync(storageKey) || [];
+      const ignoredElementsInfo: any[] = [];
+
+      // Add by-id ignores
+      for (const elementId of ignoredByIds) {
+        const node = figma.getNodeById(elementId);
+        if (node) {
+          let details = '';
+          if ('strokes' in node && node.strokes && Array.isArray(node.strokes) && node.strokes.length > 0) {
+            const firstStroke = node.strokes[0] as SolidPaint;
+            if (firstStroke && firstStroke.type === 'SOLID' && firstStroke.color) {
+              const { r, g, b } = firstStroke.color;
+              details = `Stroke: ${rgbToHex(r, g, b)}`;
+            }
+          } else if ('fills' in node && node.fills && Array.isArray(node.fills) && node.fills.length > 0) {
+            const firstFill = node.fills[0] as SolidPaint;
+            if (firstFill && firstFill.type === 'SOLID' && firstFill.color) {
+              const { r, g, b } = firstFill.color;
+              details = `Fill: ${rgbToHex(r, g, b)}`;
+            }
+          }
+          if (node.type === 'TEXT' && !(node as TextNode).textStyleId) {
+            details = 'Text without style';
+          }
+          ignoredElementsInfo.push({
+            ignoreType: 'by-id',
+            id: elementId,
+            name: node.name,
+            type: node.type,
+            details: details,
+            pageName: node.parent && node.parent.type === 'PAGE' ? node.parent.name : undefined
+          });
+        } else {
+          ignoredElementsInfo.push({
+            ignoreType: 'by-id',
+            id: elementId,
+            name: '(Deleted)',
+            type: 'UNKNOWN',
+            details: 'Element no longer exists'
+          });
+        }
+      }
+
+      // Add by-value ignores
+      for (const ignored of updatedIgnoredValues) {
+        let displayValue = ignored.value;
+        if (ignored.valueType === 'text-no-style') {
+          displayValue = 'Text without style';
+        }
+        ignoredElementsInfo.push({
+          ignoreType: 'by-value',
+          valueType: ignored.valueType,
+          value: displayValue
+        });
+      }
+
+      figma.ui.postMessage({
+        type: 'ignored-elements-list',
+        ignoredElementIds: ignoredByIds,
+        ignoredElements: ignoredElementsInfo
+      });
+    }
+  } else if (msg.type === 'get-ignored-elements') {
+    // Send back BOTH by-id and by-value ignores with their info
+    const ignoredByIds = await figma.clientStorage.getAsync(getIgnoreByIdKey()) || [];
+    const ignoredByValues = await figma.clientStorage.getAsync(getIgnoreByValueKey()) || [];
+
+    const ignoredElementsInfo: any[] = [];
+
+    // Add by-id ignores
+    for (const elementId of ignoredByIds) {
+      const node = figma.getNodeById(elementId);
+      if (node) {
+        let details = '';
+
+        // Get color info for strokes/fills
+        if ('strokes' in node && node.strokes && Array.isArray(node.strokes) && node.strokes.length > 0) {
+          const firstStroke = node.strokes[0] as SolidPaint;
+          if (firstStroke && firstStroke.type === 'SOLID' && firstStroke.color) {
+            const { r, g, b } = firstStroke.color;
+            const hex = rgbToHex(r, g, b);
+            details = `Stroke: ${hex}`;
+          }
+        } else if ('fills' in node && node.fills && Array.isArray(node.fills) && node.fills.length > 0) {
+          const firstFill = node.fills[0] as SolidPaint;
+          if (firstFill && firstFill.type === 'SOLID' && firstFill.color) {
+            const { r, g, b } = firstFill.color;
+            const hex = rgbToHex(r, g, b);
+            details = `Fill: ${hex}`;
+          }
+        }
+
+        // Check if it's text without style
+        if (node.type === 'TEXT') {
+          const textNode = node as TextNode;
+          if (!textNode.textStyleId) {
+            details = 'Text without style';
+          }
+        }
+
+        ignoredElementsInfo.push({
+          ignoreType: 'by-id',
+          id: elementId,
+          name: node.name,
+          type: node.type,
+          details: details,
+          pageName: node.parent && node.parent.type === 'PAGE' ? node.parent.name : undefined
+        });
+      } else {
+        // Node was deleted
+        ignoredElementsInfo.push({
+          ignoreType: 'by-id',
+          id: elementId,
+          name: '(Deleted)',
+          type: 'UNKNOWN',
+          details: 'Element no longer exists'
+        });
+      }
+    }
+
+    // Add by-value ignores (we'll just show the value, count would require re-scanning)
+    for (const ignored of ignoredByValues) {
+      let displayValue = ignored.value;
+
+      if (ignored.valueType === 'text-no-style') {
+        displayValue = 'Text without style';
+      }
+
+      ignoredElementsInfo.push({
+        ignoreType: 'by-value',
+        valueType: ignored.valueType,
+        value: displayValue
+      });
+    }
+
+    figma.ui.postMessage({
+      type: 'ignored-elements-list',
+      ignoredElementIds: ignoredByIds,
+      ignoredElements: ignoredElementsInfo
+    });
   } else if (msg.type === 'resize') {
     // Resize the window
     if (msg.size && msg.size.w && msg.size.h) {
