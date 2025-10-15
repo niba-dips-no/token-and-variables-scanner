@@ -1,4 +1,4 @@
-# Figma Modes Viewer
+# Figma Token and Variable Scanner
 
 A Figma plugin to view and manage variable modes in your design files.
 

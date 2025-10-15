@@ -1,4 +1,4 @@
-# Modes Viewer Plugin - Short Description
+# Token and Variable Scanner Plugin - Short Description
 
 A Figma plugin that displays all design variables (tokens) and their mode values in a side-by-side table view.
 

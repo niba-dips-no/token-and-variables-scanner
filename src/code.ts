@@ -62,7 +62,7 @@ figma.showUI(__html__, {
   width: 800,
   height: 600,
   themeColors: true,
-  title: "Modes Viewer"
+  title: "Token and Variable Scanner"
 });
 
 // Restore previous window size (non-blocking)
