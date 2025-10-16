@@ -1,3 +1,8 @@
+// Import utilities
+import { rgbToHex } from './utils/color-utils';
+import { findPageForNode, getNodeColorDetails, hasBoundFills, hasBoundStrokes } from './utils/node-utils';
+import { getIgnoreByIdKey, getIgnoreByValueKey, WINDOW_SIZE_KEY } from './constants/storage-keys';
+
 // Type definitions (inline to avoid module issues)
 type PluginVariableData = {
   id: string;
@@ -66,7 +71,7 @@ figma.showUI(__html__, {
 });
 
 // Restore previous window size (non-blocking)
-figma.clientStorage.getAsync('windowSize').then((size: any) => {
+figma.clientStorage.getAsync(WINDOW_SIZE_KEY).then((size: any) => {
   if (size && size.w && size.h) {
     figma.ui.resize(size.w, size.h);
   }
@@ -92,67 +97,20 @@ function extractVariableId(fullId: string): string {
   return fullId;
 }
 
-// Helper function to convert RGB to hex
-function rgbToHex(r: number, g: number, b: number): string {
-  const toHex = (n: number) => {
-    const hex = Math.round(n * 255).toString(16);
-    return hex.length === 1 ? '0' + hex : hex;
-  };
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
-}
-
-// Get document-specific storage keys for ignored elements
-function getIgnoreByIdKey(): string {
-  return `ignoredUnboundElements_byId_${figma.root.id}`;
-}
-
-function getIgnoreByValueKey(): string {
-  return `ignoredUnboundElements_byValue_${figma.root.id}`;
-}
-
 // Helper function to send ignored elements list to UI
 async function sendIgnoredElementsList() {
   try {
-    const ignoredByIds = await figma.clientStorage.getAsync(getIgnoreByIdKey()) || [];
-    const ignoredByValues = await figma.clientStorage.getAsync(getIgnoreByValueKey()) || [];
+    const ignoredByIds = await figma.clientStorage.getAsync(getIgnoreByIdKey(figma.root.id)) || [];
+    const ignoredByValues = await figma.clientStorage.getAsync(getIgnoreByValueKey(figma.root.id)) || [];
     const ignoredElementsInfo: any[] = [];
 
     // Add by-id ignores
     for (const elementId of ignoredByIds) {
       const node = figma.getNodeById(elementId);
       if (node) {
-        let details = '';
-        let pageName = '';
-
-        // Safely get page name
-        try {
-          let current: BaseNode | null = node;
-          while (current && current.type !== 'PAGE') {
-            current = current.parent;
-          }
-          if (current && current.type === 'PAGE') {
-            pageName = current.name;
-          }
-        } catch (e) {
-          // Ignore page name errors
-        }
-
-        if ('strokes' in node && node.strokes && Array.isArray(node.strokes) && node.strokes.length > 0) {
-          const firstStroke = node.strokes[0] as SolidPaint;
-          if (firstStroke && firstStroke.type === 'SOLID' && firstStroke.color) {
-            const { r, g, b } = firstStroke.color;
-            details = `Stroke: ${rgbToHex(r, g, b)}`;
-          }
-        } else if ('fills' in node && node.fills && Array.isArray(node.fills) && node.fills.length > 0) {
-          const firstFill = node.fills[0] as SolidPaint;
-          if (firstFill && firstFill.type === 'SOLID' && firstFill.color) {
-            const { r, g, b } = firstFill.color;
-            details = `Fill: ${rgbToHex(r, g, b)}`;
-          }
-        }
-        if (node.type === 'TEXT' && !(node as TextNode).textStyleId) {
-          details = 'Text without style';
-        }
+        const page = findPageForNode(node);
+        const pageName = page ? page.name : '';
+        const details = getNodeColorDetails(node);
 
         // Create plain object with only strings to avoid WASM issues
         ignoredElementsInfo.push({
@@ -218,11 +176,7 @@ function scanUnboundElements(node: BaseNode, unboundElements: UnboundElement[]):
     // Check for partial styling (has some properties but not using text style)
     // Check if fills are not using color variables
     if (textNode.fills && textNode.fills !== figma.mixed && Array.isArray(textNode.fills)) {
-      const hasBoundFills = 'boundVariables' in textNode &&
-                            textNode.boundVariables &&
-                            'fills' in textNode.boundVariables;
-
-      if (!hasBoundFills && textNode.fills.length > 0) {
+      if (!hasBoundFills(textNode) && textNode.fills.length > 0) {
         const solidFills = textNode.fills.filter(f => f.type === 'SOLID' && f.visible !== false);
         if (solidFills.length > 0) {
           // Get text color details
@@ -242,11 +196,7 @@ function scanUnboundElements(node: BaseNode, unboundElements: UnboundElement[]):
 
   // Check fills on other node types
   if ('fills' in node && node.fills && node.fills !== figma.mixed && Array.isArray(node.fills)) {
-    const hasBoundFills = 'boundVariables' in node &&
-                          node.boundVariables &&
-                          'fills' in node.boundVariables;
-
-    if (!hasBoundFills) {
+    if (!hasBoundFills(node)) {
       const solidFills = node.fills.filter(f => f.type === 'SOLID' && f.visible !== false);
       if (solidFills.length > 0 && node.type !== 'TEXT') {
         // Get fill color details
@@ -265,11 +215,7 @@ function scanUnboundElements(node: BaseNode, unboundElements: UnboundElement[]):
 
   // Check strokes
   if ('strokes' in node && node.strokes && Array.isArray(node.strokes)) {
-    const hasBoundStrokes = 'boundVariables' in node &&
-                            node.boundVariables &&
-                            'strokes' in node.boundVariables;
-
-    if (!hasBoundStrokes) {
+    if (!hasBoundStrokes(node)) {
       const visibleStrokes = node.strokes.filter(s => s.type === 'SOLID' && s.visible !== false);
       if (visibleStrokes.length > 0) {
         // Get stroke color details
@@ -559,8 +505,8 @@ async function getVariableCollections(mode: 'page' | 'selection' | 'document' = 
     console.log('Found', unboundElements.length, 'unbound elements');
 
     // Filter out ignored elements (both by-id and by-value)
-    const ignoredByIds = await figma.clientStorage.getAsync(getIgnoreByIdKey()) || [];
-    const ignoredByValues = await figma.clientStorage.getAsync(getIgnoreByValueKey()) || [];
+    const ignoredByIds = await figma.clientStorage.getAsync(getIgnoreByIdKey(figma.root.id)) || [];
+    const ignoredByValues = await figma.clientStorage.getAsync(getIgnoreByValueKey(figma.root.id)) || [];
 
     const filteredUnboundElements = unboundElements.filter(el => {
       // Check if ignored by ID
@@ -719,13 +665,9 @@ figma.ui.onmessage = async (msg) => {
 
           if (node && 'type' in node) {
             // Find the page this node is on
-            let currentNode: BaseNode | null = node;
-            while (currentNode && currentNode.type !== 'PAGE') {
-              currentNode = currentNode.parent;
-            }
+            const page = findPageForNode(node);
 
-            if (currentNode && currentNode.type === 'PAGE') {
-              const page = currentNode as PageNode;
+            if (page) {
               console.log('Node', node.name, 'is on page:', page.name);
 
               if (!nodesByPage.has(page.id)) {
@@ -859,7 +801,7 @@ figma.ui.onmessage = async (msg) => {
   } else if (msg.type === 'ignore-element') {
     // Add element to ignore list by ID (per-document)
     if (msg.elementId) {
-      const storageKey = getIgnoreByIdKey();
+      const storageKey = getIgnoreByIdKey(figma.root.id);
       const ignoredElements = await figma.clientStorage.getAsync(storageKey) || [];
       if (!ignoredElements.includes(msg.elementId)) {
         ignoredElements.push(msg.elementId);
@@ -876,32 +818,7 @@ figma.ui.onmessage = async (msg) => {
       for (const elementId of ignoredElementIds) {
         const node = figma.getNodeById(elementId);
         if (node) {
-          let details = '';
-
-          // Get color info for strokes/fills
-          if ('strokes' in node && node.strokes && Array.isArray(node.strokes) && node.strokes.length > 0) {
-            const firstStroke = node.strokes[0] as SolidPaint;
-            if (firstStroke && firstStroke.type === 'SOLID' && firstStroke.color) {
-              const { r, g, b } = firstStroke.color;
-              const hex = rgbToHex(r, g, b);
-              details = `Stroke: ${hex}`;
-            }
-          } else if ('fills' in node && node.fills && Array.isArray(node.fills) && node.fills.length > 0) {
-            const firstFill = node.fills[0] as SolidPaint;
-            if (firstFill && firstFill.type === 'SOLID' && firstFill.color) {
-              const { r, g, b } = firstFill.color;
-              const hex = rgbToHex(r, g, b);
-              details = `Fill: ${hex}`;
-            }
-          }
-
-          // Check if it's text without style
-          if (node.type === 'TEXT') {
-            const textNode = node as TextNode;
-            if (!textNode.textStyleId) {
-              details = 'Text without style';
-            }
-          }
+          const details = getNodeColorDetails(node);
 
           ignoredElementsInfo.push({
             id: elementId,
@@ -929,7 +846,7 @@ figma.ui.onmessage = async (msg) => {
   } else if (msg.type === 'ignore-value') {
     // Add value to ignore list (ignores all elements with this value)
     if (msg.valueType && msg.value) {
-      const storageKey = getIgnoreByValueKey();
+      const storageKey = getIgnoreByValueKey(figma.root.id);
       const ignoredValues = await figma.clientStorage.getAsync(storageKey) || [];
 
       // Check if this value/type combo already exists
@@ -953,7 +870,7 @@ figma.ui.onmessage = async (msg) => {
   } else if (msg.type === 'unignore-element') {
     // Remove element from ignore list by ID
     if (msg.elementId) {
-      const storageKey = getIgnoreByIdKey();
+      const storageKey = getIgnoreByIdKey(figma.root.id);
       const ignoredElements = await figma.clientStorage.getAsync(storageKey) || [];
       const filtered = ignoredElements.filter((id: string) => id !== msg.elementId);
       await figma.clientStorage.setAsync(storageKey, filtered);
@@ -968,32 +885,7 @@ figma.ui.onmessage = async (msg) => {
       for (const elementId of ignoredElementIds) {
         const node = figma.getNodeById(elementId);
         if (node) {
-          let details = '';
-
-          // Get color info for strokes/fills
-          if ('strokes' in node && node.strokes && Array.isArray(node.strokes) && node.strokes.length > 0) {
-            const firstStroke = node.strokes[0] as SolidPaint;
-            if (firstStroke && firstStroke.type === 'SOLID' && firstStroke.color) {
-              const { r, g, b } = firstStroke.color;
-              const hex = rgbToHex(r, g, b);
-              details = `Stroke: ${hex}`;
-            }
-          } else if ('fills' in node && node.fills && Array.isArray(node.fills) && node.fills.length > 0) {
-            const firstFill = node.fills[0] as SolidPaint;
-            if (firstFill && firstFill.type === 'SOLID' && firstFill.color) {
-              const { r, g, b } = firstFill.color;
-              const hex = rgbToHex(r, g, b);
-              details = `Fill: ${hex}`;
-            }
-          }
-
-          // Check if it's text without style
-          if (node.type === 'TEXT') {
-            const textNode = node as TextNode;
-            if (!textNode.textStyleId) {
-              details = 'Text without style';
-            }
-          }
+          const details = getNodeColorDetails(node);
 
           ignoredElementsInfo.push({
             id: elementId,
@@ -1021,7 +913,7 @@ figma.ui.onmessage = async (msg) => {
   } else if (msg.type === 'unignore-value') {
     // Remove value from ignore list
     if (msg.valueType && msg.value) {
-      const storageKey = getIgnoreByValueKey();
+      const storageKey = getIgnoreByValueKey(figma.root.id);
       const ignoredValues = await figma.clientStorage.getAsync(storageKey) || [];
       const filtered = ignoredValues.filter((item: any) =>
         !(item.valueType === msg.valueType && item.value === msg.value)
@@ -1043,7 +935,7 @@ figma.ui.onmessage = async (msg) => {
     // Resize the window
     if (msg.size && msg.size.w && msg.size.h) {
       figma.ui.resize(msg.size.w, msg.size.h);
-      figma.clientStorage.setAsync('windowSize', msg.size);
+      figma.clientStorage.setAsync(WINDOW_SIZE_KEY, msg.size);
     }
   } else if (msg.type === 'close') {
     figma.closePlugin();
