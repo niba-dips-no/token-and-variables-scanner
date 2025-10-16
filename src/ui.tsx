@@ -18,6 +18,7 @@ const App = () => {
   const [hasScanned, setHasScanned] = React.useState(false);
   const [scanProgress, setScanProgress] = React.useState<{ current: number; total: number; pageName: string } | null>(null);
   const [currentPageName, setCurrentPageName] = React.useState<string>('');
+  const [unboundExpanded, setUnboundExpanded] = React.useState(true);
 
   React.useEffect(() => {
     // Listen for messages from plugin code
@@ -277,10 +278,16 @@ const App = () => {
       <div className="content">
         {unboundElements.length > 0 && (
           <div className="unbound-section">
-          <div className="unbound-header">
-            <h3>⚠️ Unbound Elements ({unboundElements.length})</h3>
-            <p>Elements not using design tokens or text styles</p>
+          <div className="unbound-header" onClick={() => setUnboundExpanded(!unboundExpanded)} style={{ cursor: 'pointer' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '14px', userSelect: 'none' }}>{unboundExpanded ? '▼' : '▶'}</span>
+              <div>
+                <h3>⚠️ Unbound Elements ({unboundElements.length})</h3>
+                <p>Elements not using design tokens or text styles</p>
+              </div>
+            </div>
           </div>
+          {unboundExpanded && (
           <div className="unbound-categories">
             {['text-no-style', 'text-partial-style', 'fill-no-variable', 'stroke-no-variable'].map(category => {
               const categoryElements = unboundElements.filter(el => el.type === category);
@@ -355,6 +362,7 @@ const App = () => {
               );
             })}
           </div>
+          )}
           </div>
         )}
 
