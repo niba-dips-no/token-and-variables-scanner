@@ -503,7 +503,12 @@ const App = () => {
                           {variable.name}
                         </button>
                         <span className="node-count">({variable.nodeIds.length})</span>
-                        {variable.isRemote && !activeCollection.isGhost && <span className="library-badge" title="From library">📚</span>}
+                        {variable.isRemote && !activeCollection.isGhost && (
+                          <>
+                            <span className="library-badge" title={activeCollection.libraryName ? `From library: ${activeCollection.libraryName}` : "From library"}>📚</span>
+                            {activeCollection.libraryName && <span className="library-name">{activeCollection.libraryName}</span>}
+                          </>
+                        )}
                         {activeCollection.isGhost && <span className="ghost-badge-inline" title="Ghost library - editable">👻</span>}
                       </td>
                       <td className="var-type">{variable.resolvedType}</td>

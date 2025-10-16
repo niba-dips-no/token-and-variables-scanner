@@ -707,37 +707,92 @@ figma.ui.onmessage = async (msg) => {
   } else if (msg.type === 'select-nodes') {
     // Select nodes in Figma (works across pages)
     if (msg.nodeIds && msg.nodeIds.length > 0) {
-      const nodes: SceneNode[] = [];
-      let targetPage: PageNode | null = null;
+      console.log('Attempting to select nodes:', msg.nodeIds);
+
+      // Group nodes by page
+      const nodesByPage = new Map<string, { page: PageNode; nodes: SceneNode[] }>();
 
       for (const nodeId of msg.nodeIds) {
-        const node = figma.getNodeById(nodeId);
-        if (node && 'type' in node) {
-          nodes.push(node as SceneNode);
+        try {
+          const node = figma.getNodeById(nodeId);
+          console.log('Retrieved node:', nodeId, node ? node.name : 'null');
 
-          // Find the page this node is on
-          if (!targetPage) {
-            let current: BaseNode | null = node;
-            while (current && current.type !== 'PAGE') {
-              current = current.parent;
+          if (node && 'type' in node) {
+            // Find the page this node is on
+            let currentNode: BaseNode | null = node;
+            while (currentNode && currentNode.type !== 'PAGE') {
+              currentNode = currentNode.parent;
             }
-            if (current && current.type === 'PAGE') {
-              targetPage = current as PageNode;
+
+            if (currentNode && currentNode.type === 'PAGE') {
+              const page = currentNode as PageNode;
+              console.log('Node', node.name, 'is on page:', page.name);
+
+              if (!nodesByPage.has(page.id)) {
+                nodesByPage.set(page.id, { page, nodes: [] });
+              }
+              nodesByPage.get(page.id)!.nodes.push(node as SceneNode);
             }
+          } else {
+            console.warn('Node not found or invalid:', nodeId);
           }
+        } catch (e) {
+          console.error('Error retrieving node:', nodeId, e);
         }
       }
 
-      if (nodes.length > 0 && targetPage) {
-        // Switch to the page where the node is located
-        if (figma.currentPage.id !== targetPage.id) {
-          isProgrammaticPageChange = true;
-          figma.currentPage = targetPage;
+      if (nodesByPage.size > 0) {
+        // Get the first page with nodes (or the page with the most nodes)
+        let targetPageData = Array.from(nodesByPage.values())[0];
+
+        // If nodes span multiple pages, prefer the page with the most nodes
+        if (nodesByPage.size > 1) {
+          targetPageData = Array.from(nodesByPage.values()).reduce((prev, current) =>
+            current.nodes.length > prev.nodes.length ? current : prev
+          );
+          console.log(`Nodes span ${nodesByPage.size} pages, selecting from page with most nodes: ${targetPageData.page.name}`);
         }
 
-        // Select and zoom to the nodes
-        figma.currentPage.selection = nodes;
-        figma.viewport.scrollAndZoomIntoView(nodes);
+        const { page: targetPage, nodes } = targetPageData;
+
+        // Switch to the target page if needed
+        if (figma.currentPage.id !== targetPage.id) {
+          console.log('Switching from page', figma.currentPage.name, 'to', targetPage.name);
+          isProgrammaticPageChange = true;
+
+          // Set the page and wait for the change to complete
+          figma.currentPage = targetPage;
+
+          // Wait longer and verify the page switch completed
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          // Verify we're on the right page now
+          if (figma.currentPage.id !== targetPage.id) {
+            console.error('Page switch failed - still on', figma.currentPage.name);
+            figma.notify('Failed to switch pages', { error: true });
+            return;
+          }
+        }
+
+        // Select and zoom to the nodes on the target page
+        // Use setTimeout to ensure we're in a clean state
+        setTimeout(() => {
+          try {
+            targetPage.selection = nodes;
+            figma.viewport.scrollAndZoomIntoView(nodes);
+            console.log('Selected', nodes.length, 'node(s) on page', targetPage.name);
+          } catch (e) {
+            console.error('Error setting selection:', e);
+            figma.notify('Could not select nodes', { error: true });
+          }
+        }, 50);
+
+        if (nodesByPage.size > 1) {
+          figma.notify(`Selected ${nodes.length} of ${msg.nodeIds.length} nodes (some on other pages)`);
+        }
+      } else {
+        console.error('No valid nodes found to select');
+        figma.notify('Could not find nodes to select', { error: true });
       }
     }
   } else if (msg.type === 'update-variable') {

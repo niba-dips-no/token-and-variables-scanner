@@ -379,6 +379,19 @@ tr:hover {
 .library-badge {
   margin-left: 6px;
   font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.library-name {
+  font-size: 10px;
+  color: #0d99ff;
+  font-weight: 500;
+  background: #f0f7ff;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid #b3d9ff;
 }
 
 .remote-variable {
