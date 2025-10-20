@@ -396,6 +396,20 @@ export async function enrichCollectionData(
 ): Promise<PluginCollectionData[]> {
   const collectionsData: PluginCollectionData[] = [];
 
+  // Fetch team libraries once for all collections (performance optimization)
+  let availableLibraries: LibraryVariableCollection[] | null = null;
+  const hasRemoteCollections = collections.some(c => c.remote);
+
+  if (hasRemoteCollections) {
+    try {
+      console.log('Fetching available team libraries...');
+      availableLibraries = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+      console.log(`Found ${availableLibraries.length} available library collections`);
+    } catch (e) {
+      console.log('Could not fetch team libraries:', e);
+    }
+  }
+
   for (const collection of collections) {
     // Get modes
     const modes: PluginModeData[] = collection.modes.map(mode => ({
@@ -453,10 +467,13 @@ export async function enrichCollectionData(
         const keyParts = collection.key.split('/');
         libraryName = keyParts.length > 0 ? keyParts[keyParts.length - 1] : collection.key;
 
-        // Check if it's a ghost library
-        isGhost = await VariableService.isGhostLibrary(collection);
-        if (isGhost) {
-          console.log(`Collection "${collection.name}" is a ghost (library not available)`);
+        // Check if it's a ghost library using cached team libraries
+        if (availableLibraries) {
+          const libraryExists = availableLibraries.some(lib => lib.key === collection.key);
+          isGhost = !libraryExists;
+          if (isGhost) {
+            console.log(`Collection "${collection.name}" is a ghost (library not available)`);
+          }
         }
       }
 
