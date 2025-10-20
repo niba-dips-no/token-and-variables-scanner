@@ -1,6 +1,19 @@
 /**
  * Variable Scanner Service
- * Handles scanning nodes for variable usage and building collection data
+ *
+ * Handles scanning Figma nodes for variable usage and building collection data.
+ *
+ * This is the core service for the plugin's primary functionality:
+ * 1. Scans pages/selections/documents for variables in use
+ * 2. Groups variables by their collections
+ * 3. Enriches data with library information and ghost detection
+ * 4. Identifies unbound elements (elements not using design tokens)
+ * 5. Filters ignored elements based on user preferences
+ *
+ * The service supports three scan modes:
+ * - **page**: Scan the current page only
+ * - **selection**: Scan only selected nodes
+ * - **document**: Scan all pages in the document (with progress updates)
  */
 
 import { rgbToHex } from '../utils/color-utils';
@@ -189,7 +202,21 @@ function getUsedVariableIds(node: BaseNode, variableToNodes: Map<string, Set<str
 }
 
 /**
- * Builds a human-readable selection info string
+ * Builds a human-readable selection info string.
+ *
+ * Creates a user-friendly description of selected nodes:
+ * - 1 node: "NodeName"
+ * - 2-3 nodes: "Node1, Node2, Node3"
+ * - 4+ nodes: "Node1, Node2 + 5 more"
+ *
+ * @param nodes - Array of selected scene nodes
+ * @returns Human-readable selection description
+ *
+ * @example
+ * ```typescript
+ * const info = buildSelectionInfo(figma.currentPage.selection);
+ * // Returns: "Button, Frame 1 + 3 more"
+ * ```
  */
 export function buildSelectionInfo(nodes: readonly SceneNode[]): string {
   const selectionNames = nodes.map(node => node.name);
@@ -203,7 +230,32 @@ export function buildSelectionInfo(nodes: readonly SceneNode[]): string {
 }
 
 /**
- * Scans nodes for variable usage based on scan mode
+ * Scans nodes for variable usage based on the specified scan mode.
+ *
+ * This function is the first step in the scanning pipeline. It:
+ * 1. Recursively scans the node tree for boundVariables
+ * 2. Collects unbound elements (nodes not using design tokens)
+ * 3. Builds selection info strings for display
+ * 4. Sends progress updates for document-wide scans
+ *
+ * Scan modes:
+ * - **page**: Scans all nodes on the current page
+ * - **selection**: Scans only selected nodes (requires selection)
+ * - **document**: Scans all pages incrementally with progress updates
+ *
+ * @param scanMode - The scan mode to use
+ * @returns Object containing:
+ *   - usedVariableIds: Map of variable IDs to sets of node IDs using them
+ *   - unboundElements: Array of elements not using design tokens
+ *   - selectionInfo: Human-readable description of what was scanned
+ *
+ * @example
+ * ```typescript
+ * const { usedVariableIds, unboundElements, selectionInfo } =
+ *   await scanNodesForVariables('page');
+ * console.log(`Found ${usedVariableIds.size} variables in use`);
+ * console.log(`Found ${unboundElements.length} unbound elements`);
+ * ```
  */
 export async function scanNodesForVariables(
   scanMode: 'page' | 'selection' | 'document'
@@ -476,7 +528,37 @@ export async function filterIgnoredElements(
 }
 
 /**
- * Main function to get variable collections for the specified scan mode
+ * Main function to get variable collections for the specified scan mode.
+ *
+ * This is the primary entry point for the variable scanner service.
+ * It orchestrates the entire scanning, grouping, fetching, enriching,
+ * and filtering pipeline.
+ *
+ * Process flow:
+ * 1. Scan nodes for variable usage ({@link scanNodesForVariables})
+ * 2. Group variables by collection ({@link groupVariablesByCollection})
+ * 3. Fetch collection objects ({@link fetchCollections})
+ * 4. Enrich with library info and ghost detection ({@link enrichCollectionData})
+ * 5. Filter ignored elements ({@link filterIgnoredElements})
+ * 6. Return complete dataset with current page name
+ *
+ * @param scanMode - The scan mode: 'page', 'selection', or 'document'
+ * @returns Object containing:
+ *   - collections: Array of enriched collection data
+ *   - unboundElements: Array of filtered unbound elements
+ *   - selectionInfo: Description of what was scanned (optional)
+ *   - currentPageName: Name of the current page
+ *
+ * @throws Error if scanning fails
+ *
+ * @example
+ * ```typescript
+ * // Scan current page
+ * const result = await getVariableCollections('page');
+ * console.log(`Found ${result.collections.length} collections`);
+ * console.log(`Found ${result.unboundElements.length} unbound elements`);
+ * console.log(`Current page: ${result.currentPageName}`);
+ * ```
  */
 export async function getVariableCollections(
   scanMode: 'page' | 'selection' | 'document' = 'page'

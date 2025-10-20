@@ -1,10 +1,32 @@
 /**
  * Service for managing Figma variables
+ *
+ * This service handles variable updates and library detection for the plugin.
+ * It ensures that only editable variables can be modified and provides
+ * special handling for "ghost" libraries (library references that no longer exist).
  */
 
 /**
- * Checks if a variable collection is a ghost library
- * (remote but no longer available)
+ * Checks if a variable collection is a ghost library.
+ *
+ * A "ghost library" is a remote (library) variable collection that is no longer
+ * available in the team library. This happens when:
+ * - The library file was deleted
+ * - The library was unpublished
+ * - The library access was revoked
+ *
+ * Ghost libraries are still editable because they're essentially local now.
+ *
+ * @param collection - The variable collection to check
+ * @returns True if the collection is a ghost library, false otherwise
+ *
+ * @example
+ * ```typescript
+ * const collection = await figma.variables.getVariableCollectionByIdAsync(id);
+ * if (await isGhostLibrary(collection)) {
+ *   console.log('This is a ghost library - can be edited');
+ * }
+ * ```
  */
 export async function isGhostLibrary(collection: VariableCollection): Promise<boolean> {
   if (!collection.remote || !collection.key) {
@@ -23,11 +45,42 @@ export async function isGhostLibrary(collection: VariableCollection): Promise<bo
 }
 
 /**
- * Updates a variable value for a specific mode
- * @param variableId The variable ID
- * @param modeId The mode ID
- * @param value The new value (will be parsed based on variable type)
- * @returns Success status and error message if failed
+ * Updates a variable value for a specific mode.
+ *
+ * This function handles variable updates with the following logic:
+ * 1. Validates that the variable exists
+ * 2. Checks if it's a library variable (remote)
+ * 3. For library variables, checks if it's a ghost library
+ * 4. Blocks editing of valid library variables (must edit in source file)
+ * 5. Allows editing of local variables and ghost library variables
+ * 6. Parses values based on variable type (FLOAT, COLOR, STRING, BOOLEAN)
+ * 7. Updates the variable and shows a notification
+ *
+ * @param variableId - The Figma variable ID to update
+ * @param modeId - The mode ID for which to update the value
+ * @param value - The new value. Type depends on variable type:
+ *   - FLOAT: number or string that can be parsed to number
+ *   - COLOR: RGB object {r: 0-1, g: 0-1, b: 0-1, a: 0-1}
+ *   - STRING: string
+ *   - BOOLEAN: boolean
+ *
+ * @returns Object with success status and optional error message
+ *
+ * @example
+ * ```typescript
+ * // Update a color variable
+ * const result = await updateVariableValue(
+ *   'var123',
+ *   'mode456',
+ *   { r: 1, g: 0, b: 0, a: 1 }
+ * );
+ * if (!result.success) {
+ *   console.error(result.error);
+ * }
+ *
+ * // Update a number variable
+ * await updateVariableValue('var789', 'mode456', '16');
+ * ```
  */
 export async function updateVariableValue(
   variableId: string,

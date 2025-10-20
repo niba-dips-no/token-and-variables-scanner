@@ -1,14 +1,45 @@
 /**
- * Service for selecting nodes in Figma across pages
+ * Service for selecting nodes in Figma across pages.
+ *
+ * This service provides intelligent node selection that works across
+ * multiple pages. It handles:
+ * - Grouping nodes by their containing page
+ * - Switching to the appropriate page automatically
+ * - Selecting multiple nodes and zooming to fit
+ * - Preventing unnecessary page change events
  */
 
 import { findPageForNode } from '../utils/node-utils';
 
 /**
- * Selects nodes by their IDs, handling cross-page selection
- * @param nodeIds Array of node IDs to select
- * @param isProgrammaticChange Callback to set programmatic page change flag
+ * Selects nodes by their IDs, with intelligent cross-page handling.
+ *
+ * This function implements the following logic:
+ * 1. Retrieves all nodes by ID and groups them by their containing page
+ * 2. If nodes span multiple pages, selects from the page with the most nodes
+ * 3. Switches to the target page if different from current page
+ * 4. Sets the page selection and zooms viewport to show all selected nodes
+ * 5. Shows appropriate notifications for multi-page selections
+ *
+ * The isProgrammaticChange callback prevents unwanted data refreshes
+ * when the page changes due to this function (not user action).
+ *
+ * @param nodeIds - Array of Figma node IDs to select
+ * @param isProgrammaticChange - Callback to set the programmatic change flag.
+ *   Called with `true` before switching pages, allowing the caller to
+ *   suppress auto-refresh behavior for programmatic page changes.
+ *
  * @returns Promise that resolves when selection is complete
+ *
+ * @example
+ * ```typescript
+ * // Select nodes and prevent auto-refresh on page change
+ * let isProgrammatic = false;
+ * await selectNodesByIds(
+ *   ['node1', 'node2', 'node3'],
+ *   (value) => { isProgrammatic = value; }
+ * );
+ * ```
  */
 export async function selectNodesByIds(
   nodeIds: string[],
