@@ -5,8 +5,8 @@
 This document tracks the comprehensive refactoring effort to transform the Token and Variable Scanner plugin from a monolithic codebase into a well-architected, testable, and maintainable system.
 
 **Initial State**: 943-line code.ts file with business logic, UI handlers, and utilities mixed together
-**Current State**: Service layer architecture with 686-line code.ts, 43 passing tests, 100% coverage for utilities
-**Target State**: ~400-line code.ts with complete service layer separation
+**Current State**: ✅ Complete service layer architecture with 301-line code.ts, 43 passing tests, 100% coverage for utilities
+**Achievement**: Exceeded target! (Target was 400 lines, achieved 301 lines)
 
 ## Code Quality Assessment
 
@@ -16,17 +16,25 @@ This document tracks the comprehensive refactoring effort to transform the Token
   - Duplicate logic
   - Poor separation of business logic
 
-- **Current State**: 7.5/10
+- **After Phase 5**: 7.5/10
   - Service layer established
   - Good test coverage for utilities
   - Improved organization
   - Still has large getVariableCollections function
 
+- **Current State (Phase 6 Complete)**: 8.5/10 ✨
+  - ✅ Complete service layer architecture
+  - ✅ 100% test coverage for utilities and constants
+  - ✅ Excellent code organization
+  - ✅ Clear separation of concerns
+  - ⏳ Service layer tests pending (Phase 7)
+  - ⏳ JSDoc documentation pending (Phase 8)
+
 - **Target State**: 9/10
-  - Complete service layer
-  - Comprehensive test coverage
-  - Clear separation of concerns
-  - Well-documented architecture
+  - Complete service layer (✅ Done)
+  - Comprehensive test coverage (⏳ 80%+ after Phase 7)
+  - Clear separation of concerns (✅ Done)
+  - Well-documented architecture (⏳ After Phase 8)
 
 ## Completed Phases
 
@@ -156,86 +164,71 @@ npm run test:ui       # Interactive UI
 npm run test:coverage # Generate coverage report
 ```
 
-## In-Progress Phases
-
-### Phase 6: Extract Variable Scanner Service 🔄 (In Progress)
+### Phase 6: Extract Variable Scanner Service ✅ (Completed)
 
 **Goal**: Extract the largest remaining function (getVariableCollections, 250+ lines) into a service
 
-**Analysis Completed**:
-The `getVariableCollections()` function (lines 258-507 in code.ts) contains multiple responsibilities:
+**Implementation Completed**:
+Created `src/services/variable-scanner-service.ts` (518 lines) with six core functions:
 
-1. **Scanning Logic** (lines 264-314)
-   - Handle page/selection/document modes
-   - Recursively scan nodes for boundVariables
-   - Build selectionInfo strings
+1. **`scanNodesForVariables()`** - Scans nodes based on page/selection/document mode
+   - Recursively scans node tree for boundVariables
+   - Collects unbound elements (text without styles, fills/strokes without variables)
+   - Builds human-readable selection info strings
+   - Sends progress updates for document-wide scans
 
-2. **Variable Grouping** (lines 320-355)
-   - Group variable IDs by collection
-   - Track which nodes use each variable
+2. **`buildSelectionInfo()`** - Creates user-friendly selection descriptions
+   - Single node: shows node name
+   - 2-3 nodes: comma-separated names
+   - 4+ nodes: "Name1, Name2 + N more"
 
-3. **Collection Fetching** (lines 361-413)
-   - Fetch collections from Figma API
-   - Handle both local and library variables
-   - Error handling for missing collections
+3. **`groupVariablesByCollection()`** - Groups variables by their collection IDs
+   - Fetches variable objects from Figma API
+   - Maps variables to their parent collections
+   - Tracks which nodes use each variable
 
-4. **Data Enrichment** (lines 415-460)
-   - Add library names and remote status
-   - Detect ghost libraries
-   - Process modes and variables
+4. **`fetchCollections()`** - Retrieves collection objects from Figma
+   - Fetches both local and library collections
+   - Logs collection names and types
 
-5. **Filtering** (lines 465-497)
-   - Apply ignore filters to unbound elements
-   - Filter by ignored IDs and values
+5. **`enrichCollectionData()`** - Adds library info and processes variables
+   - Resolves alias references to variable names
+   - Detects ghost libraries (unavailable library references)
+   - Extracts library names from collection keys
+   - Processes modes and variable values
 
-**Planned Service Structure** (`src/services/variable-scanner-service.ts`):
+6. **`filterIgnoredElements()`** - Applies ignore filters
+   - Filters by ignored element IDs
+   - Filters by ignored values (colors, text styles)
+   - Uses IgnoredElementsService for storage
+
+7. **`getVariableCollections()`** - Main orchestration function
+   - Coordinates all above functions in sequence
+   - Returns complete collection data with unbound elements
+
+**Changes to code.ts**:
 ```typescript
-// Core scanning functions
-export async function scanNodesForVariables(
-  scanMode: 'page' | 'selection' | 'document',
-  rootNode?: SceneNode
-): Promise<{
-  usedVariableIds: Map<string, Set<string>>;
-  unboundElements: UnboundElement[];
-  selectionInfo?: string;
-}>
+// Before: 250+ lines of inline logic
+async function getVariableCollections(...) {
+  // Complex scanning, grouping, fetching, enriching logic...
+}
 
-export function buildSelectionInfo(scanMode: string, nodes: readonly SceneNode[]): string
-
-// Data processing functions
-export function groupVariablesByCollection(
-  usedVariableIds: Map<string, Set<string>>
-): Map<string, Set<string>>
-
-export async function enrichCollectionData(
-  collections: VariableCollection[],
-  variablesByCollection: Map<string, Set<string>>
-): Promise<CollectionData[]>
-
-export async function filterIgnoredElements(
-  unboundElements: UnboundElement[],
-  documentId: string
-): Promise<UnboundElement[]>
-
-// Main orchestration function
-export async function getVariableCollections(
-  scanMode: 'page' | 'selection' | 'document'
-): Promise<{ collections: CollectionData[]; unboundElements: UnboundElement[]; selectionInfo?: string }>
+// After: 3 lines delegating to service
+async function getVariableCollections(mode: 'page' | 'selection' | 'document' = 'page') {
+  return await VariableScannerService.getVariableCollections(mode);
+}
 ```
 
-**Next Steps**:
-1. Create src/services/variable-scanner-service.ts
-2. Extract scanning logic into scanNodesForVariables()
-3. Extract data transformation logic into helper functions
-4. Update code.ts to use new service
-5. Add tests for scanner service
-6. Run build and verify functionality
+**Results**:
+- ✅ Reduced code.ts from 686 to 301 lines (385 lines removed, 56% reduction)
+- ✅ Total reduction from initial: 943 → 301 = 642 lines removed (68% reduction!)
+- ✅ Removed `scanUnboundElements()` and `getUsedVariableIds()` helper functions
+- ✅ Complete service layer architecture achieved
+- ✅ Improved testability of scanning logic
+- ✅ All tests passing (43 tests)
+- ✅ Build successful
 
-**Expected Results**:
-- Reduce code.ts from 686 to ~400 lines (286 lines removed, 42% reduction)
-- Total reduction from initial: 943 → 400 = 543 lines removed (58% reduction)
-- Complete service layer architecture
-- Improved testability of scanning logic
+**Better than projected**: Target was ~400 lines, achieved 301 lines (99 lines better than target)
 
 ## Pending Phases
 
@@ -306,7 +299,7 @@ ui.tsx
 └── React components
 ```
 
-### Current Architecture
+### After Phase 5 Architecture
 ```
 code.ts (686 lines)
 ├── Message handlers (delegate to services)
@@ -329,24 +322,27 @@ ui.tsx
 └── React components
 ```
 
-### Target Architecture
+### Final Architecture (Phase 6 Complete) ✅
 ```
-code.ts (~400 lines)
+code.ts (301 lines) ✨
 ├── Message handlers (delegate to services)
-└── Plugin lifecycle
+├── Plugin lifecycle management
+├── Event listeners (page changes)
+└── Helper functions (extractVariableId, sendIgnoredElementsList)
 
 services/
 ├── ignored-elements-service.ts (165 lines)
 ├── node-selection-service.ts (108 lines)
 ├── variable-service.ts (85 lines)
-└── variable-scanner-service.ts (~250 lines)
+└── variable-scanner-service.ts (518 lines) ✨
 
 utils/
-└── color-utils.ts (with tests)
+├── color-utils.ts (with tests, 100% coverage)
+└── node-utils.ts (utility functions)
 
 constants/
-├── element-types.ts (with tests)
-└── storage-keys.ts (with tests)
+├── element-types.ts (with tests, 100% coverage)
+└── storage-keys.ts (with tests, 100% coverage)
 
 ui.tsx
 └── React components
@@ -411,18 +407,26 @@ expect(rgbToHex(0.501, 0.499, 0.5)).toBe('#807F80'); // Corrected rounding
 
 ### Lines of Code
 - **Initial**: code.ts = 943 lines
-- **After Phase 4**: code.ts = 686 lines (257 lines removed)
-- **After Phase 6** (projected): code.ts = ~400 lines (543 total lines removed)
-- **Reduction**: 58% reduction in code.ts size
+- **After Phase 4**: code.ts = 686 lines (257 lines removed, 27% reduction)
+- **After Phase 6**: code.ts = 301 lines (642 lines removed, 68% reduction!) ✨
+- **Achievement**: Beat target by 99 lines (target: 400, actual: 301)
+
+### Service Layer
+- **ignored-elements-service.ts**: 165 lines
+- **node-selection-service.ts**: 108 lines
+- **variable-service.ts**: 85 lines
+- **variable-scanner-service.ts**: 518 lines
+- **Total service code**: 876 lines (well-organized, single-responsibility modules)
 
 ### Test Coverage
 - **Phase 5**: 43 tests, 100% coverage for utilities/constants
-- **Phase 7** (projected): 80+ tests, 80%+ coverage overall
+- **Phase 7** (projected): 80+ tests, 80%+ coverage for services
 
 ### File Organization
-- **Initial**: 1 main file (code.ts)
-- **Current**: 4 service files + 3 test files
-- **After Phase 6**: 5 service files + tests
+- **Initial**: 1 monolithic file (code.ts)
+- **Phase 4**: 4 files (code.ts + 3 services)
+- **Phase 6**: 6 files (code.ts + 4 services + utils)
+- **With tests**: 9 files total (+ 3 test files)
 
 ## Key Decisions
 
@@ -527,10 +531,10 @@ git log --oneline -5     # View recent commits
 ## Notes for Future Work
 
 ### Technical Debt
-- getVariableCollections still 250+ lines (Phase 6 will address)
-- No tests for service layer yet
-- No JSDoc documentation
-- No performance optimization
+- ~~getVariableCollections still 250+ lines~~ ✅ Completed in Phase 6
+- No tests for service layer yet (Phase 7)
+- No JSDoc documentation (Phase 8)
+- No performance optimization (Phase 9)
 
 ### Known Issues
 - None currently
@@ -551,5 +555,5 @@ git log --oneline -5     # View recent commits
 ---
 
 **Last Updated**: 2025-10-20
-**Current Phase**: Phase 6 (In Progress)
-**Next Session**: Continue Phase 6 - Extract Variable Scanner Service
+**Current Phase**: ✅ Phase 6 Complete! Service layer architecture achieved.
+**Next Priority**: Phase 7 (Service Layer Testing), Phase 8 (Documentation), or Phase 9 (Performance)
