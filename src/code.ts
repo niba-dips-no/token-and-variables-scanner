@@ -2,6 +2,9 @@
 import { rgbToHex } from './utils/color-utils';
 import { findPageForNode, getNodeColorDetails, hasBoundFills, hasBoundStrokes } from './utils/node-utils';
 import { getIgnoreByIdKey, getIgnoreByValueKey, WINDOW_SIZE_KEY } from './constants/storage-keys';
+import * as IgnoredElementsService from './services/ignored-elements-service';
+import * as NodeSelectionService from './services/node-selection-service';
+import * as VariableService from './services/variable-service';
 
 // Type definitions (inline to avoid module issues)
 type PluginVariableData = {
@@ -100,57 +103,12 @@ function extractVariableId(fullId: string): string {
 // Helper function to send ignored elements list to UI
 async function sendIgnoredElementsList() {
   try {
-    const ignoredByIds = await figma.clientStorage.getAsync(getIgnoreByIdKey(figma.root.id)) || [];
-    const ignoredByValues = await figma.clientStorage.getAsync(getIgnoreByValueKey(figma.root.id)) || [];
-    const ignoredElementsInfo: any[] = [];
+    const { ignoredElementIds, ignoredElements } = await IgnoredElementsService.getIgnoredElementsInfo(figma.root.id);
 
-    // Add by-id ignores
-    for (const elementId of ignoredByIds) {
-      const node = figma.getNodeById(elementId);
-      if (node) {
-        const page = findPageForNode(node);
-        const pageName = page ? page.name : '';
-        const details = getNodeColorDetails(node);
-
-        // Create plain object with only strings to avoid WASM issues
-        ignoredElementsInfo.push({
-          ignoreType: 'by-id',
-          id: String(elementId),
-          name: String(node.name || ''),
-          type: String(node.type || ''),
-          details: String(details || ''),
-          pageName: pageName ? String(pageName) : ''
-        });
-      } else {
-        ignoredElementsInfo.push({
-          ignoreType: 'by-id',
-          id: String(elementId),
-          name: '(Deleted)',
-          type: 'UNKNOWN',
-          details: 'Element no longer exists',
-          pageName: ''
-        });
-      }
-    }
-
-    // Add by-value ignores
-    for (const ignored of ignoredByValues) {
-      let displayValue = ignored.value;
-      if (ignored.valueType === 'text-no-style') {
-        displayValue = 'Text without style';
-      }
-      ignoredElementsInfo.push({
-        ignoreType: 'by-value',
-        valueType: String(ignored.valueType || ''),
-        value: String(displayValue || '')
-      });
-    }
-
-    // Send as plain data
     figma.ui.postMessage({
       type: 'ignored-elements-list',
-      ignoredElementIds: ignoredByIds.map(String),
-      ignoredElements: ignoredElementsInfo
+      ignoredElementIds,
+      ignoredElements
     });
   } catch (error) {
     console.error('Error sending ignored elements list:', error);
@@ -505,8 +463,8 @@ async function getVariableCollections(mode: 'page' | 'selection' | 'document' = 
     console.log('Found', unboundElements.length, 'unbound elements');
 
     // Filter out ignored elements (both by-id and by-value)
-    const ignoredByIds = await figma.clientStorage.getAsync(getIgnoreByIdKey(figma.root.id)) || [];
-    const ignoredByValues = await figma.clientStorage.getAsync(getIgnoreByValueKey(figma.root.id)) || [];
+    const ignoredByIds = await IgnoredElementsService.getIgnoredElementIds(figma.root.id);
+    const ignoredByValues = await IgnoredElementsService.getIgnoredValues(figma.root.id);
 
     const filteredUnboundElements = unboundElements.filter(el => {
       // Check if ignored by ID
@@ -653,279 +611,64 @@ figma.ui.onmessage = async (msg) => {
   } else if (msg.type === 'select-nodes') {
     // Select nodes in Figma (works across pages)
     if (msg.nodeIds && msg.nodeIds.length > 0) {
-      console.log('Attempting to select nodes:', msg.nodeIds);
-
-      // Group nodes by page
-      const nodesByPage = new Map<string, { page: PageNode; nodes: SceneNode[] }>();
-
-      for (const nodeId of msg.nodeIds) {
-        try {
-          const node = figma.getNodeById(nodeId);
-          console.log('Retrieved node:', nodeId, node ? node.name : 'null');
-
-          if (node && 'type' in node) {
-            // Find the page this node is on
-            const page = findPageForNode(node);
-
-            if (page) {
-              console.log('Node', node.name, 'is on page:', page.name);
-
-              if (!nodesByPage.has(page.id)) {
-                nodesByPage.set(page.id, { page, nodes: [] });
-              }
-              nodesByPage.get(page.id)!.nodes.push(node as SceneNode);
-            }
-          } else {
-            console.warn('Node not found or invalid:', nodeId);
-          }
-        } catch (e) {
-          console.error('Error retrieving node:', nodeId, e);
-        }
-      }
-
-      if (nodesByPage.size > 0) {
-        // Get the first page with nodes (or the page with the most nodes)
-        let targetPageData = Array.from(nodesByPage.values())[0];
-
-        // If nodes span multiple pages, prefer the page with the most nodes
-        if (nodesByPage.size > 1) {
-          targetPageData = Array.from(nodesByPage.values()).reduce((prev, current) =>
-            current.nodes.length > prev.nodes.length ? current : prev
-          );
-          console.log(`Nodes span ${nodesByPage.size} pages, selecting from page with most nodes: ${targetPageData.page.name}`);
-        }
-
-        const { page: targetPage, nodes } = targetPageData;
-
-        // Switch to the target page if needed
-        if (figma.currentPage.id !== targetPage.id) {
-          console.log('Switching from page', figma.currentPage.name, 'to', targetPage.name);
-          isProgrammaticPageChange = true;
-
-          // Set the page and wait for the change to complete
-          figma.currentPage = targetPage;
-
-          // Wait longer and verify the page switch completed
-          await new Promise(resolve => setTimeout(resolve, 100));
-
-          // Verify we're on the right page now
-          if (figma.currentPage.id !== targetPage.id) {
-            console.error('Page switch failed - still on', figma.currentPage.name);
-            figma.notify('Failed to switch pages', { error: true });
-            return;
-          }
-        }
-
-        // Select and zoom to the nodes on the target page
-        // Use setTimeout to ensure we're in a clean state
-        setTimeout(() => {
-          try {
-            targetPage.selection = nodes;
-            figma.viewport.scrollAndZoomIntoView(nodes);
-            console.log('Selected', nodes.length, 'node(s) on page', targetPage.name);
-          } catch (e) {
-            console.error('Error setting selection:', e);
-            figma.notify('Could not select nodes', { error: true });
-          }
-        }, 50);
-
-        if (nodesByPage.size > 1) {
-          figma.notify(`Selected ${nodes.length} of ${msg.nodeIds.length} nodes (some on other pages)`);
-        }
-      } else {
-        console.error('No valid nodes found to select');
-        figma.notify('Could not find nodes to select', { error: true });
-      }
+      await NodeSelectionService.selectNodesByIds(msg.nodeIds, (value) => {
+        isProgrammaticPageChange = value;
+      });
     }
   } else if (msg.type === 'update-variable') {
     // Update variable value
-    try {
-      if (msg.variableId && msg.modeId !== undefined && msg.value !== undefined) {
-        const variable = await figma.variables.getVariableByIdAsync(msg.variableId);
+    if (msg.variableId && msg.modeId !== undefined && msg.value !== undefined) {
+      const result = await VariableService.updateVariableValue(msg.variableId, msg.modeId, msg.value);
 
-        if (variable) {
-          // Check if it's a remote (library) variable
-          const collection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
-
-          if (collection && collection.remote) {
-            // Check if it's a ghost library (remote but not available)
-            let isGhost = false;
-            try {
-              const teamLibraries = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
-              const libraryExists = teamLibraries.some(lib => lib.key === collection.key);
-              isGhost = !libraryExists;
-            } catch (e) {
-              // If we can't check, assume it's not a ghost
-              isGhost = false;
-            }
-
-            // Only block editing if it's a valid (non-ghost) library
-            if (!isGhost) {
-              figma.notify('Cannot edit library variables. Open the library file to edit.', { error: true });
-              return;
-            } else {
-              console.log('Allowing edit of ghost library variable');
-            }
-          }
-
-          // Set the value based on type
-          const currentValue = variable.valuesByMode[msg.modeId];
-
-          // Parse the value based on variable type
-          let parsedValue = msg.value;
-
-          if (variable.resolvedType === 'FLOAT') {
-            parsedValue = parseFloat(msg.value);
-            if (isNaN(parsedValue)) {
-              figma.notify('Invalid number value', { error: true });
-              return;
-            }
-          } else if (variable.resolvedType === 'COLOR') {
-            // Value should already be in RGB format from UI
-            parsedValue = msg.value;
-          }
-
-          // Update the variable value
-          variable.setValueForMode(msg.modeId, parsedValue);
-
-          figma.notify(`Updated ${variable.name}`);
-
-          // Refresh the data to show the new value
-          await refreshData();
-        }
+      if (result.success) {
+        // Refresh the data to show the new value
+        await refreshData();
+      } else if (result.error) {
+        figma.notify(result.error, { error: true });
       }
-    } catch (error) {
-      console.error('Error updating variable:', error);
-      figma.notify('Failed to update variable', { error: true });
     }
   } else if (msg.type === 'ignore-element') {
     // Add element to ignore list by ID (per-document)
     if (msg.elementId) {
-      const storageKey = getIgnoreByIdKey(figma.root.id);
-      const ignoredElements = await figma.clientStorage.getAsync(storageKey) || [];
-      if (!ignoredElements.includes(msg.elementId)) {
-        ignoredElements.push(msg.elementId);
-        await figma.clientStorage.setAsync(storageKey, ignoredElements);
-        console.log('Element ignored by ID. Storage key:', storageKey, 'Total ignored:', ignoredElements.length);
-        figma.notify('Element hidden from future scans');
-      }
-      // Refresh to update the display AND send updated ignored list
+      await IgnoredElementsService.ignoreElementById(msg.elementId, figma.root.id);
+      figma.notify('Element hidden from future scans');
       await refreshData();
-
-      // Fetch enriched data for all ignored elements
-      const ignoredElementIds = await figma.clientStorage.getAsync(storageKey) || [];
-      const ignoredElementsInfo: any[] = [];
-      for (const elementId of ignoredElementIds) {
-        const node = figma.getNodeById(elementId);
-        if (node) {
-          const details = getNodeColorDetails(node);
-
-          ignoredElementsInfo.push({
-            id: elementId,
-            name: node.name,
-            type: node.type,
-            details: details
-          });
-        } else {
-          // Node was deleted
-          ignoredElementsInfo.push({
-            id: elementId,
-            name: '(Deleted)',
-            type: 'UNKNOWN',
-            details: 'Element no longer exists'
-          });
-        }
-      }
-
-      figma.ui.postMessage({
-        type: 'ignored-elements-list',
-        ignoredElementIds: ignoredElementIds,
-        ignoredElements: ignoredElementsInfo
-      });
+      await sendIgnoredElementsList();
     }
   } else if (msg.type === 'ignore-value') {
     // Add value to ignore list (ignores all elements with this value)
     if (msg.valueType && msg.value) {
-      const storageKey = getIgnoreByValueKey(figma.root.id);
-      const ignoredValues = await figma.clientStorage.getAsync(storageKey) || [];
-
-      // Check if this value/type combo already exists
-      const exists = ignoredValues.some((item: any) =>
-        item.valueType === msg.valueType && item.value === msg.value
+      const wasAdded = await IgnoredElementsService.ignoreElementsByValue(
+        msg.valueType as 'stroke' | 'fill' | 'text-no-style',
+        msg.value,
+        figma.root.id
       );
 
-      if (!exists) {
-        ignoredValues.push({ valueType: msg.valueType, value: msg.value });
-        await figma.clientStorage.setAsync(storageKey, ignoredValues);
-        console.log('Value ignored:', msg.valueType, msg.value, 'Total value ignores:', ignoredValues.length);
+      if (wasAdded) {
         figma.notify(`All ${msg.valueType}s with ${msg.value} hidden from future scans`);
       }
 
-      // Refresh to update the display
       await refreshData();
-
-      // Send updated ignored list
       await sendIgnoredElementsList();
     }
   } else if (msg.type === 'unignore-element') {
     // Remove element from ignore list by ID
     if (msg.elementId) {
-      const storageKey = getIgnoreByIdKey(figma.root.id);
-      const ignoredElements = await figma.clientStorage.getAsync(storageKey) || [];
-      const filtered = ignoredElements.filter((id: string) => id !== msg.elementId);
-      await figma.clientStorage.setAsync(storageKey, filtered);
-      console.log('Element unignored by ID. Storage key:', storageKey, 'Total ignored:', filtered.length);
+      await IgnoredElementsService.unignoreElementById(msg.elementId, figma.root.id);
       figma.notify('Element will appear in future scans');
-      // Refresh to update the display AND send updated ignored list
       await refreshData();
-
-      // Fetch enriched data for remaining ignored elements
-      const ignoredElementIds = await figma.clientStorage.getAsync(storageKey) || [];
-      const ignoredElementsInfo: any[] = [];
-      for (const elementId of ignoredElementIds) {
-        const node = figma.getNodeById(elementId);
-        if (node) {
-          const details = getNodeColorDetails(node);
-
-          ignoredElementsInfo.push({
-            id: elementId,
-            name: node.name,
-            type: node.type,
-            details: details
-          });
-        } else {
-          // Node was deleted
-          ignoredElementsInfo.push({
-            id: elementId,
-            name: '(Deleted)',
-            type: 'UNKNOWN',
-            details: 'Element no longer exists'
-          });
-        }
-      }
-
-      figma.ui.postMessage({
-        type: 'ignored-elements-list',
-        ignoredElementIds: ignoredElementIds,
-        ignoredElements: ignoredElementsInfo
-      });
+      await sendIgnoredElementsList();
     }
   } else if (msg.type === 'unignore-value') {
     // Remove value from ignore list
     if (msg.valueType && msg.value) {
-      const storageKey = getIgnoreByValueKey(figma.root.id);
-      const ignoredValues = await figma.clientStorage.getAsync(storageKey) || [];
-      const filtered = ignoredValues.filter((item: any) =>
-        !(item.valueType === msg.valueType && item.value === msg.value)
+      await IgnoredElementsService.unignoreElementsByValue(
+        msg.valueType as 'stroke' | 'fill' | 'text-no-style',
+        msg.value,
+        figma.root.id
       );
-      await figma.clientStorage.setAsync(storageKey, filtered);
-      console.log('Value unignored:', msg.valueType, msg.value, 'Total value ignores:', filtered.length);
       figma.notify('Value will appear in future scans');
-
-      // Refresh to update the display
       await refreshData();
-
-      // Send updated ignored list
       await sendIgnoredElementsList();
     }
   } else if (msg.type === 'get-ignored-elements') {
