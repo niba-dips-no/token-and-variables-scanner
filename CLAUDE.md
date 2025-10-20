@@ -31,6 +31,29 @@ The plugin follows Figma's standard plugin architecture with two separate execut
 
 Communication between these contexts happens via `postMessage` API.
 
+### Service Layer Architecture
+
+The codebase has been refactored to follow a service layer pattern, separating business logic from the main plugin code:
+
+**Services (`src/services/`)**:
+- `ignored-elements-service.ts`: Manages storage and retrieval of ignored unbound elements (by ID and by value)
+- `node-selection-service.ts`: Handles cross-page node selection with intelligent page switching
+- `variable-service.ts`: Manages variable updates and ghost library detection
+- `variable-scanner-service.ts`: (In Progress) Extracts variable scanning logic
+
+**Utilities (`src/utils/`)**:
+- `color-utils.ts`: RGB/hex color conversion functions (tested)
+
+**Constants (`src/constants/`)**:
+- `element-types.ts`: Element type constants and labels (tested)
+- `storage-keys.ts`: Storage key generators for document-specific data (tested)
+
+**Benefits**:
+- Improved testability through dependency injection
+- Clear separation of concerns (business logic vs. plugin glue code)
+- Easier to understand and maintain
+- Reduced code.ts size from 943 to 686 lines (58% reduction projected after Phase 6)
+
 ### Data Flow
 
 1. Plugin code scans all nodes on the current page to find which variables are in use via `boundVariables`
@@ -46,15 +69,39 @@ Communication between these contexts happens via `postMessage` API.
 
 ### Key Components
 
-**Backend (`src/code.ts`)**:
+**Backend (`src/code.ts`)** - Plugin glue code (686 lines):
 - `extractVariableId()`: Normalizes variable IDs from boundVariables (removes VariableID: prefix and file path)
 - `getUsedVariableIds()`: Recursively scans the current page's node tree to find all variable IDs in use via `boundVariables`, tracking which nodes use each variable
-- `getVariableCollections()`: Main data retrieval function that fetches collections, modes, and variables, filtered to only include variables used on the current page. Detects ghost libraries.
+- `getVariableCollections()`: Main data retrieval function that fetches collections, modes, and variables, filtered to only include variables used on the current page. Detects ghost libraries. (Note: This 250-line function is being extracted to variable-scanner-service.ts in Phase 6)
 - `refreshData()`: Helper function to refresh variable data and send to UI
 - Handles alias resolution by detecting `VARIABLE_ALIAS` type and resolving to variable names
 - Listens for page changes via `figma.on('currentpagechange')` to auto-refresh
-- Handles messages: `refresh`, `select-nodes`, `update-variable`, `resize`, `close`
-- Uses `figma.clientStorage` to persist window size between sessions
+- Handles messages: `refresh`, `select-nodes`, `update-variable`, `resize`, `close`, `ignore-element`, `unignore-element`, `get-ignored-list`
+- Uses `figma.clientStorage` to persist window size and ignored elements between sessions
+- Delegates business logic to service layer
+
+**Services (`src/services/`)**:
+
+*ignored-elements-service.ts* (165 lines):
+- `ignoreElementById()`: Add element to ignore list by ID
+- `unignoreElementById()`: Remove element from ignore list
+- `ignoreElementsByValue()`: Ignore elements by stroke/fill/text value
+- `unignoreElementsByValue()`: Remove value-based ignores
+- `getIgnoredElementsInfo()`: Retrieve all ignored elements
+- `cleanupStaleIgnoredElements()`: Remove non-existent elements
+- Uses document-specific storage keys
+
+*node-selection-service.ts* (108 lines):
+- `selectNodesByIds()`: Cross-page node selection with page switching
+- Groups nodes by page, switches to target page if needed
+- Handles programmatic page change flag to avoid unnecessary refreshes
+- Zooms to selected nodes automatically
+
+*variable-service.ts* (85 lines):
+- `isGhostLibrary()`: Detect unavailable library collections
+- `updateVariableValue()`: Update variable values with type validation
+- Handles color (hex), float, string types
+- Returns success/error status
 
 **Frontend (`src/ui.tsx`)**:
 - `App`: Main React component managing state and rendering
@@ -105,6 +152,16 @@ npm run dev
 ```
 Watch mode for TypeScript and esbuild (does not auto-rebuild HTML - run `npm run build:html` after changes).
 
+### Testing
+```bash
+npm test                 # Run tests once
+npm run test:watch       # Watch mode
+npm run test:ui          # Interactive UI
+npm run test:coverage    # Generate coverage report
+```
+
+Current test coverage: 43 tests, 100% coverage for utilities and constants.
+
 ### Individual builds
 ```bash
 npm run build:ui     # Build UI bundle only
@@ -115,9 +172,11 @@ tsc                  # Compile plugin code only
 ## Important Notes
 
 ### Code Structure
-- **No ES modules in `code.ts`**: The plugin code must not use `import`/`export` statements. TypeScript will generate CommonJS which breaks in Figma's sandbox. Define types inline instead.
+- **Service imports allowed**: As of the refactoring, `code.ts` now imports service modules. TypeScript is configured to compile to ES5 which is compatible with Figma's sandbox. Services can use ES modules.
+- **Inline types in code.ts**: Main `code.ts` still defines types inline to avoid module transformation issues.
 - **Inlined UI resources**: JavaScript and CSS must be inlined in the HTML file. External file references via `<script src>` or `<link>` won't work with Figma's `__html__` variable.
 - **Type conflicts**: Use type aliases (not interfaces) with unique names (e.g., `PluginVariableData`) to avoid conflicts with Figma's built-in types.
+- **Testing**: Use Vitest for unit tests. Focus on testing services and utilities. Mock Figma API for service tests.
 
 ### Figma API
 - **Variables API**: All API calls are async. Use `figma.variables.getVariableByIdAsync()` to fetch individual variables, `figma.variables.getVariableCollectionByIdAsync()` for collections.
@@ -159,3 +218,15 @@ tsc                  # Compile plugin code only
 - Ensure "teamlibrary" permission is in manifest.json
 - Check console for permission errors
 - Verify library collections API is accessible
+
+## Refactoring Progress
+
+See `REFACTORING.md` for detailed progress on the ongoing refactoring effort to improve code quality, testability, and maintainability.
+
+**Current Status**:
+- Phase 4 (Service Extraction): ✅ Completed
+- Phase 5 (Unit Testing): ✅ Completed
+- Phase 6 (Variable Scanner Service): 🔄 In Progress
+- Phase 7+ (Service Testing, Documentation, Performance): Pending
+
+The codebase is being systematically refactored from a monolithic 943-line code.ts file into a clean service layer architecture with comprehensive test coverage.
