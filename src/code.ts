@@ -6,6 +6,7 @@ import * as IgnoredElementsService from './services/ignored-elements-service';
 import * as NodeSelectionService from './services/node-selection-service';
 import * as VariableService from './services/variable-service';
 import * as VariableScannerService from './services/variable-scanner-service';
+import * as ComponentScannerService from './services/component-scanner-service';
 
 // Type definitions (inline to avoid module issues)
 type PluginVariableData = {
@@ -46,9 +47,25 @@ type IgnoredElementInfo = {
   details: string;
 };
 
+type PluginComponentUsageData = {
+  id: string;
+  name: string;
+  nodeIds: string[];
+  isRemote: boolean;
+}
+
+type PluginComponentLibraryData = {
+  id: string;
+  name: string;
+  isRemote: boolean;
+  isGhost: boolean;
+  components: PluginComponentUsageData[];
+}
+
 type PluginMessage = {
   type: 'collections-data' | 'error' | 'select-nodes' | 'update-variable' | 'resize' | 'set-scan-mode' | 'ready' | 'refresh' | 'page-changed' | 'scan-progress' | 'ignore-element' | 'unignore-element' | 'get-ignored-elements' | 'ignored-elements-list';
   data?: PluginCollectionData[];
+  componentLibraries?: PluginComponentLibraryData[];
   unboundElements?: UnboundElement[];
   ignoredElementIds?: string[];
   ignoredElements?: IgnoredElementInfo[];
@@ -136,13 +153,16 @@ async function loadInitialData() {
   if (initialLoadDone) return;
 
   try {
-    console.log('Plugin started, fetching collections...');
+    console.log('Plugin started, fetching collections and components...');
     const result = await getVariableCollections(scanMode);
+    const componentLibraries = await ComponentScannerService.getComponentLibraries(scanMode);
     console.log('Collections fetched:', result.collections.length, 'collections');
+    console.log('Component libraries fetched:', componentLibraries.length, 'libraries');
 
     const message: PluginMessage = {
       type: 'collections-data',
       data: result.collections,
+      componentLibraries: componentLibraries,
       unboundElements: result.unboundElements,
       scanMode: scanMode,
       selectionInfo: result.selectionInfo,
@@ -170,10 +190,12 @@ async function loadInitialData() {
 async function refreshData() {
   try {
     const result = await getVariableCollections(scanMode);
+    const componentLibraries = await ComponentScannerService.getComponentLibraries(scanMode);
 
     const message: PluginMessage = {
       type: 'collections-data',
       data: result.collections,
+      componentLibraries: componentLibraries,
       unboundElements: result.unboundElements,
       scanMode: scanMode,
       selectionInfo: result.selectionInfo,

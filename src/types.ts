@@ -45,9 +45,26 @@ export interface IgnoredElementInfo {
   pageName?: string; // For by-id ignores, which page it's on
 }
 
+// Component library data types
+export interface ComponentUsageData {
+  id: string;
+  name: string;
+  nodeIds: string[];
+  isRemote: boolean;
+}
+
+export interface ComponentLibraryData {
+  id: string;              // Library key or "local"
+  name: string;            // Library name or "Local Components"
+  isRemote: boolean;
+  isGhost: boolean;        // Library no longer available
+  components: ComponentUsageData[];
+}
+
 export interface PluginMessage {
   type: 'collections-data' | 'error' | 'select-nodes' | 'update-variable' | 'resize' | 'set-scan-mode' | 'ready' | 'refresh' | 'page-changed' | 'scan-progress' | 'ignore-element' | 'ignore-value' | 'unignore-element' | 'unignore-value' | 'get-ignored-elements' | 'ignored-elements-list';
   data?: CollectionData[];
+  componentLibraries?: ComponentLibraryData[];
   unboundElements?: UnboundElement[];
   ignoredElementIds?: string[];
   ignoredElements?: IgnoredElementInfo[];

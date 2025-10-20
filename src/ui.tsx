@@ -1,6 +1,6 @@
 import * as React from 'react';
 import * as ReactDOM from 'react-dom/client';
-import { CollectionData, PluginMessage, UnboundElement, IgnoredElementInfo } from './types';
+import { CollectionData, ComponentLibraryData, PluginMessage, UnboundElement, IgnoredElementInfo } from './types';
 import { hexToRgb, rgbToHex } from './utils/color-utils';
 import { ELEMENT_TYPE_LABELS } from './constants/element-types';
 import { useDebounce } from './utils/use-debounce';
@@ -8,6 +8,7 @@ import './ui.css';
 
 const App = () => {
   const [collections, setCollections] = React.useState<CollectionData[]>([]);
+  const [componentLibraries, setComponentLibraries] = React.useState<ComponentLibraryData[]>([]);
   const [unboundElements, setUnboundElements] = React.useState<UnboundElement[]>([]);
   const [ignoredElementIds, setIgnoredElementIds] = React.useState<string[]>([]);
   const [ignoredElements, setIgnoredElements] = React.useState<IgnoredElementInfo[]>([]);
@@ -32,8 +33,10 @@ const App = () => {
       if (msg.type === 'collections-data') {
         console.log('UI received collections-data');
         console.log('Setting collections:', msg.data);
+        console.log('Setting component libraries:', msg.componentLibraries);
         console.log('Setting unbound elements:', msg.unboundElements);
         setCollections(msg.data || []);
+        setComponentLibraries(msg.componentLibraries || []);
         setUnboundElements(msg.unboundElements || []);
         setLoading(false);
         setHasScanned(true);
@@ -244,6 +247,12 @@ const App = () => {
             Showing variables used {scanMode === 'page' ? 'on current page' : scanMode === 'selection' ? 'on selection' : 'in entire document'}
             {(scanMode === 'selection' || scanMode === 'document') && selectionInfo && (
               <span style={{ color: '#0d99ff', fontWeight: 500 }}> • {selectionInfo}</span>
+            )}
+            {componentLibraries.length > 0 && (
+              <span style={{ color: '#666' }}>
+                {' '} • {componentLibraries.reduce((sum, lib) => sum + lib.components.length, 0)} components from {componentLibraries.length} {componentLibraries.length === 1 ? 'library' : 'libraries'}
+                {componentLibraries.some(lib => lib.isGhost) && <span style={{ color: '#ff9500' }}> ⚠️</span>}
+              </span>
             )}
           </p>
         </div>
