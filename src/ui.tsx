@@ -3,6 +3,7 @@ import * as ReactDOM from 'react-dom/client';
 import { CollectionData, PluginMessage, UnboundElement, IgnoredElementInfo } from './types';
 import { hexToRgb, rgbToHex } from './utils/color-utils';
 import { ELEMENT_TYPE_LABELS } from './constants/element-types';
+import { useDebounce } from './utils/use-debounce';
 import './ui.css';
 
 const App = () => {
@@ -157,14 +158,28 @@ const App = () => {
     }, '*');
   };
 
-  const filteredCollections = collections.map(collection => ({
-    ...collection,
-    variables: collection.variables.filter(variable =>
-      variable.name.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  }));
+  // Debounce search term to avoid filtering on every keystroke
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
-  const activeCollection = filteredCollections.find(c => c.id === selectedCollection);
+  // Memoize filtered collections to avoid recalculating on every render
+  const filteredCollections = React.useMemo(() => {
+    if (!debouncedSearchTerm) {
+      return collections;
+    }
+    const searchLower = debouncedSearchTerm.toLowerCase();
+    return collections.map(collection => ({
+      ...collection,
+      variables: collection.variables.filter(variable =>
+        variable.name.toLowerCase().includes(searchLower)
+      )
+    }));
+  }, [collections, debouncedSearchTerm]);
+
+  // Memoize active collection lookup
+  const activeCollection = React.useMemo(() =>
+    filteredCollections.find(c => c.id === selectedCollection),
+    [filteredCollections, selectedCollection]
+  );
 
   if (loading && !hasScanned) {
     return (
@@ -536,8 +551,8 @@ const App = () => {
   );
 };
 
-// Editable cell component
-const EditableCell = ({
+// Editable cell component - memoized to prevent unnecessary re-renders
+const EditableCell = React.memo(({
   value,
   type,
   variableId,
@@ -622,7 +637,7 @@ const EditableCell = ({
       {formattedValue}
     </div>
   );
-};
+});
 
 function formatValue(value: any, type: string): React.ReactNode {
   if (value === null || value === undefined) {
