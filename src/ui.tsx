@@ -1,6 +1,8 @@
 import * as React from 'react';
 import * as ReactDOM from 'react-dom/client';
 import { CollectionData, PluginMessage, UnboundElement, IgnoredElementInfo } from './types';
+import { hexToRgb, rgbToHex } from './utils/color-utils';
+import { ELEMENT_TYPE_LABELS } from './constants/element-types';
 import './ui.css';
 
 const App = () => {
@@ -293,16 +295,9 @@ const App = () => {
               const categoryElements = unboundElements.filter(el => el.type === category);
               if (categoryElements.length === 0) return null;
 
-              const categoryLabels = {
-                'text-no-style': 'Text without text style',
-                'text-partial-style': 'Text with partial styling',
-                'fill-no-variable': 'Fill without variable',
-                'stroke-no-variable': 'Stroke without variable'
-              };
-
               return (
                 <div key={category} className="unbound-category">
-                  <h4>{categoryLabels[category as keyof typeof categoryLabels]} ({categoryElements.length})</h4>
+                  <h4>{ELEMENT_TYPE_LABELS[category as keyof typeof ELEMENT_TYPE_LABELS]} ({categoryElements.length})</h4>
                   <ul className="unbound-list">
                     {categoryElements.map(element => {
                       // Extract value and type for "ignore all" functionality
@@ -629,16 +624,6 @@ const EditableCell = ({
   );
 };
 
-function hexToRgb(hex: string): { r: number; g: number; b: number; a: number } {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result ? {
-    r: parseInt(result[1], 16) / 255,
-    g: parseInt(result[2], 16) / 255,
-    b: parseInt(result[3], 16) / 255,
-    a: 1
-  } : { r: 0, g: 0, b: 0, a: 1 };
-}
-
 function formatValue(value: any, type: string): React.ReactNode {
   if (value === null || value === undefined) {
     return <span className="null-value">—</span>;
@@ -675,14 +660,6 @@ function formatValue(value: any, type: string): React.ReactNode {
   }
 
   return JSON.stringify(value);
-}
-
-function rgbToHex(r: number, g: number, b: number): string {
-  const toHex = (n: number) => {
-    const hex = Math.round(n * 255).toString(16);
-    return hex.length === 1 ? '0' + hex : hex;
-  };
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
 }
 
 // Resize handle component
