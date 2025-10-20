@@ -126,9 +126,11 @@ The codebase has been refactored to follow a service layer pattern, separating b
 
 The build process has three steps:
 
-1. **TypeScript Compilation**: `tsc` compiles `src/code.ts` to `dist/code.js`
-   - Must not use ES modules (no imports) to avoid CommonJS `exports` errors in Figma sandbox
-   - Types are defined inline in `code.ts` to prevent module transformation
+1. **Plugin Bundling**: `esbuild` bundles plugin code (`src/code.ts`) to `dist/code.js`
+   - Uses `--format=iife` to create an Immediately Invoked Function Expression
+   - `--platform=neutral` ensures no Node.js-specific code
+   - Bundles all service imports into a single file
+   - Avoids CommonJS `exports` errors in Figma's sandbox
 
 2. **UI Bundling**: `esbuild` bundles React UI code (`src/ui.tsx`) to `dist/ui.js`
    - Uses `--format=iife` to create browser-compatible code
@@ -164,16 +166,16 @@ Current test coverage: 43 tests, 100% coverage for utilities and constants.
 
 ### Individual builds
 ```bash
+npm run build:plugin # Build plugin bundle only
 npm run build:ui     # Build UI bundle only
 npm run build:html   # Inline JS/CSS into HTML only
-tsc                  # Compile plugin code only
 ```
 
 ## Important Notes
 
 ### Code Structure
-- **Service imports allowed**: As of the refactoring, `code.ts` now imports service modules. TypeScript is configured to compile to ES5 which is compatible with Figma's sandbox. Services can use ES modules.
-- **Inline types in code.ts**: Main `code.ts` still defines types inline to avoid module transformation issues.
+- **Service imports fully supported**: `code.ts` uses ES6 imports for all service modules. esbuild bundles everything into a single IIFE, avoiding CommonJS issues.
+- **No TypeScript compilation for plugin code**: The plugin code is bundled directly by esbuild, not `tsc`. This ensures proper module handling.
 - **Inlined UI resources**: JavaScript and CSS must be inlined in the HTML file. External file references via `<script src>` or `<link>` won't work with Figma's `__html__` variable.
 - **Type conflicts**: Use type aliases (not interfaces) with unique names (e.g., `PluginVariableData`) to avoid conflicts with Figma's built-in types.
 - **Testing**: Use Vitest for unit tests. Focus on testing services and utilities. Mock Figma API for service tests.
@@ -209,10 +211,10 @@ tsc                  # Compile plugin code only
 - Check console logs for variable ID format issues
 - Verify variable IDs are being extracted correctly (removing VariableID: prefix)
 
-### TypeScript errors
-- If getting module/export errors, ensure `code.ts` doesn't use import/export
-- Check tsconfig.json includes "DOM" in lib array for browser APIs
-- Types should be defined inline in code.ts, not imported
+### Build errors
+- If getting `exports is not defined` errors, ensure esbuild is bundling the plugin code with `--format=iife`
+- Check that `npm run build:plugin` is using esbuild, not tsc
+- Verify dist/code.js starts with `(() => {` (IIFE wrapper)
 
 ### Ghost library detection not working
 - Ensure "teamlibrary" permission is in manifest.json
