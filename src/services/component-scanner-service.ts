@@ -176,32 +176,36 @@ export async function enrichComponentLibraryData(
       const firstComponent = await figma.getNodeByIdAsync(components[0].id) as ComponentNode;
 
       if (firstComponent && firstComponent.remote) {
-        // Try to get library name from key
-        if (firstComponent.key) {
-          const keyParts = firstComponent.key.split('/');
-          libraryName = keyParts.length > 1 ? keyParts[0] : firstComponent.key;
-        }
-
         // Check if library is available (ghost detection)
         if (availableLibraries && firstComponent.key) {
-          const libraryExists = availableLibraries.some(lib =>
+          // Try to find matching library by key
+          const matchingLib = availableLibraries.find(lib =>
             firstComponent.key && firstComponent.key.startsWith(lib.key)
           );
-          isGhost = !libraryExists;
 
-          if (isGhost) {
+          if (matchingLib) {
+            // Library is available - use its name
+            libraryName = matchingLib.name;
+            isGhost = false;
+          } else {
+            // Library not found - it's a ghost
+            isGhost = true;
+            // Try to get name from parent node or use key as fallback
+            try {
+              const parent = firstComponent.parent;
+              if (parent && 'name' in parent) {
+                libraryName = `${parent.name} (unavailable)`;
+              } else {
+                libraryName = `Library ${libraryKey.substring(0, 8)}... (unavailable)`;
+              }
+            } catch (e) {
+              libraryName = `Library ${libraryKey.substring(0, 8)}... (unavailable)`;
+            }
             console.log(`Component library "${libraryName}" is a ghost (not available)`);
           }
-
-          // Try to get actual library name from available libraries
-          if (!isGhost) {
-            const matchingLib = availableLibraries.find(lib =>
-              firstComponent.key && firstComponent.key.startsWith(lib.key)
-            );
-            if (matchingLib) {
-              libraryName = matchingLib.name;
-            }
-          }
+        } else {
+          // No available libraries data or no key
+          libraryName = `Library ${libraryKey.substring(0, 8)}...`;
         }
       }
     }
