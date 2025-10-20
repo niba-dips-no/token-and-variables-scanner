@@ -9,18 +9,34 @@
     "build:html": "node build-ui.js",
     "watch": "concurrently \"tsc --watch\" \"npm run watch:ui\"",
     "watch:ui": "esbuild src/ui.tsx --bundle --outfile=dist/ui.js --watch --loader:.tsx=tsx --loader:.ts=tsx --format=iife",
-    "dev": "npm run watch"
+    "dev": "npm run watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
   },
-  "keywords": ["figma", "plugin", "tokens", "variables", "modes", "design-system", "scanner"],
+  "keywords": [
+    "figma",
+    "plugin",
+    "tokens",
+    "variables",
+    "modes",
+    "design-system",
+    "scanner"
+  ],
   "author": "",
   "license": "MIT",
   "devDependencies": {
     "@figma/plugin-typings": "^1.90.0",
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.18",
+    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/ui": "^3.2.4",
     "concurrently": "^8.2.2",
     "esbuild": "^0.19.11",
-    "typescript": "^5.3.3"
+    "happy-dom": "^20.0.7",
+    "typescript": "^5.3.3",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "react": "^18.2.0",
