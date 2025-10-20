@@ -23,6 +23,8 @@ const App = () => {
   const [scanProgress, setScanProgress] = React.useState<{ current: number; total: number; pageName: string } | null>(null);
   const [currentPageName, setCurrentPageName] = React.useState<string>('');
   const [unboundExpanded, setUnboundExpanded] = React.useState(true);
+  const [viewMode, setViewMode] = React.useState<'variables' | 'components'>('variables');
+  const [selectedLibrary, setSelectedLibrary] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     // Listen for messages from plugin code
@@ -178,11 +180,38 @@ const App = () => {
     }));
   }, [collections, debouncedSearchTerm]);
 
+  // Memoize filtered component libraries
+  const filteredComponentLibraries = React.useMemo(() => {
+    if (!debouncedSearchTerm) {
+      return componentLibraries;
+    }
+    const searchLower = debouncedSearchTerm.toLowerCase();
+    return componentLibraries.map(library => ({
+      ...library,
+      components: library.components.filter(component =>
+        component.name.toLowerCase().includes(searchLower)
+      )
+    }));
+  }, [componentLibraries, debouncedSearchTerm]);
+
   // Memoize active collection lookup
   const activeCollection = React.useMemo(() =>
     filteredCollections.find(c => c.id === selectedCollection),
     [filteredCollections, selectedCollection]
   );
+
+  // Memoize active component library lookup
+  const activeLibrary = React.useMemo(() =>
+    filteredComponentLibraries.find(l => l.id === selectedLibrary),
+    [filteredComponentLibraries, selectedLibrary]
+  );
+
+  // Auto-select first library when switching to components view
+  React.useEffect(() => {
+    if (viewMode === 'components' && filteredComponentLibraries.length > 0 && !selectedLibrary) {
+      setSelectedLibrary(filteredComponentLibraries[0].id);
+    }
+  }, [viewMode, filteredComponentLibraries, selectedLibrary]);
 
   if (loading && !hasScanned) {
     return (
@@ -272,30 +301,47 @@ const App = () => {
       </div>
 
       <div className="search-bar">
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-          <label style={{ fontSize: '12px', color: '#666' }}>Scan:</label>
-          <button
-            onClick={() => handleScanModeChange('page')}
-            className={scanMode === 'page' ? 'btn-mode-active' : 'btn-mode'}
-          >
-            Page
-          </button>
-          <button
-            onClick={() => handleScanModeChange('selection')}
-            className={scanMode === 'selection' ? 'btn-mode-active' : 'btn-mode'}
-          >
-            Selection
-          </button>
-          <button
-            onClick={() => handleScanModeChange('document')}
-            className={scanMode === 'document' ? 'btn-mode-active' : 'btn-mode'}
-          >
-            Document
-          </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <label style={{ fontSize: '12px', color: '#666' }}>Scan:</label>
+            <button
+              onClick={() => handleScanModeChange('page')}
+              className={scanMode === 'page' ? 'btn-mode-active' : 'btn-mode'}
+            >
+              Page
+            </button>
+            <button
+              onClick={() => handleScanModeChange('selection')}
+              className={scanMode === 'selection' ? 'btn-mode-active' : 'btn-mode'}
+            >
+              Selection
+            </button>
+            <button
+              onClick={() => handleScanModeChange('document')}
+              className={scanMode === 'document' ? 'btn-mode-active' : 'btn-mode'}
+            >
+              Document
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <label style={{ fontSize: '12px', color: '#666' }}>View:</label>
+            <button
+              onClick={() => setViewMode('variables')}
+              className={viewMode === 'variables' ? 'btn-mode-active' : 'btn-mode'}
+            >
+              Variables
+            </button>
+            <button
+              onClick={() => setViewMode('components')}
+              className={viewMode === 'components' ? 'btn-mode-active' : 'btn-mode'}
+            >
+              Components ({componentLibraries.reduce((sum, lib) => sum + lib.components.length, 0)})
+            </button>
+          </div>
         </div>
         <input
           type="text"
-          placeholder="Search variables..."
+          placeholder={viewMode === 'variables' ? 'Search variables...' : 'Search components...'}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
@@ -455,104 +501,200 @@ const App = () => {
           </div>
         )}
 
-        <div className="collection-tabs">
-        {collections.map(collection => (
-          <button
-            key={collection.id}
-            className={`tab ${selectedCollection === collection.id ? 'active' : ''}`}
-            onClick={() => setSelectedCollection(collection.id)}
-          >
-            {collection.name}
-            {collection.isGhost && <span className="ghost-badge-tab" title="Library unavailable">⚠️</span>}
-          </button>
-        ))}
-        </div>
-
-        {activeCollection && (
+        {viewMode === 'variables' && (
           <>
-            <div className="collection-info">
-            <h2>{activeCollection.name}</h2>
-            <p>
-              {activeCollection.variables.length} variables, {activeCollection.modes.length} modes
-              {activeCollection.isRemote && activeCollection.libraryName && (
-                <span className="library-info"> • From library: <strong>{activeCollection.libraryName}</strong></span>
-              )}
-              {activeCollection.isGhost && (
-                <span className="ghost-badge"> ⚠️ Library unavailable</span>
-              )}
-            </p>
-            {activeCollection.isRemote && !activeCollection.isGhost && (
-              <div className="library-notice">
-                📚 This is a library collection. Variables are read-only. To edit, open the library file and run the plugin there.
-              </div>
-            )}
-            {activeCollection.isGhost && (
-              <div className="ghost-notice">
-                ⚠️ <strong>Ghost Library Detected:</strong> This collection references a library that is no longer available (deleted, removed, or access revoked).
-                You can now edit these values locally, but they won't sync with any library. Consider replacing these variables with local ones.
-              </div>
-            )}
-          </div>
+            <div className="collection-tabs">
+            {collections.map(collection => (
+              <button
+                key={collection.id}
+                className={`tab ${selectedCollection === collection.id ? 'active' : ''}`}
+                onClick={() => setSelectedCollection(collection.id)}
+              >
+                {collection.name}
+                {collection.isGhost && <span className="ghost-badge-tab" title="Library unavailable">⚠️</span>}
+              </button>
+            ))}
+            </div>
 
-          {activeCollection.variables.length === 0 ? (
-            <div className="empty-state">
-              No variables match your search.
-            </div>
-          ) : (
-            <div className="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th className="var-name-col">Variable Name</th>
-                    <th className="var-type-col">Type</th>
-                    {activeCollection.modes.map(mode => (
-                      <th key={mode.modeId} className="mode-col">{mode.name}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeCollection.variables.map(variable => (
-                    <tr key={variable.id} className={variable.isRemote && !activeCollection.isGhost ? 'remote-variable' : ''}>
-                      <td className="var-name">
-                        <button
-                          className="node-link"
-                          onClick={() => handleSelectNodes(variable.nodeIds)}
-                          title={`Used by ${variable.nodeIds.length} node${variable.nodeIds.length > 1 ? 's' : ''}`}
-                        >
-                          {variable.name}
-                        </button>
-                        <span className="node-count">({variable.nodeIds.length})</span>
-                        {variable.isRemote && !activeCollection.isGhost && (
-                          <>
-                            <span className="library-badge" title={activeCollection.libraryName ? `From library: ${activeCollection.libraryName}` : "From library"}>📚</span>
-                            {activeCollection.libraryName && <span className="library-name">{activeCollection.libraryName}</span>}
-                          </>
-                        )}
-                        {activeCollection.isGhost && <span className="ghost-badge-inline" title="Ghost library - editable">👻</span>}
-                      </td>
-                      <td className="var-type">{variable.resolvedType}</td>
-                      {activeCollection.modes.map(mode => {
-                        const value = variable.valuesByMode[mode.modeId];
-                        const isEditable = !variable.isRemote || activeCollection.isGhost;
-                        return (
-                          <td key={mode.modeId} className="var-value">
-                            <EditableCell
-                              value={value}
-                              type={variable.resolvedType}
-                              variableId={variable.id}
-                              modeId={mode.modeId}
-                              isRemote={isEditable ? false : variable.isRemote}
-                              onUpdate={handleUpdateVariable}
-                            />
+            {activeCollection && (
+              <>
+                <div className="collection-info">
+                <h2>{activeCollection.name}</h2>
+                <p>
+                  {activeCollection.variables.length} variables, {activeCollection.modes.length} modes
+                  {activeCollection.isRemote && activeCollection.libraryName && (
+                    <span className="library-info"> • From library: <strong>{activeCollection.libraryName}</strong></span>
+                  )}
+                  {activeCollection.isGhost && (
+                    <span className="ghost-badge"> ⚠️ Library unavailable</span>
+                  )}
+                </p>
+                {activeCollection.isRemote && !activeCollection.isGhost && (
+                  <div className="library-notice">
+                    📚 This is a library collection. Variables are read-only. To edit, open the library file and run the plugin there.
+                  </div>
+                )}
+                {activeCollection.isGhost && (
+                  <div className="ghost-notice">
+                    ⚠️ <strong>Ghost Library Detected:</strong> This collection references a library that is no longer available (deleted, removed, or access revoked).
+                    You can now edit these values locally, but they won't sync with any library. Consider replacing these variables with local ones.
+                  </div>
+                )}
+              </div>
+
+              {activeCollection.variables.length === 0 ? (
+                <div className="empty-state">
+                  No variables match your search.
+                </div>
+              ) : (
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th className="var-name-col">Variable Name</th>
+                        <th className="var-type-col">Type</th>
+                        {activeCollection.modes.map(mode => (
+                          <th key={mode.modeId} className="mode-col">{mode.name}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeCollection.variables.map(variable => (
+                        <tr key={variable.id} className={variable.isRemote && !activeCollection.isGhost ? 'remote-variable' : ''}>
+                          <td className="var-name">
+                            <button
+                              className="node-link"
+                              onClick={() => handleSelectNodes(variable.nodeIds)}
+                              title={`Used by ${variable.nodeIds.length} node${variable.nodeIds.length > 1 ? 's' : ''}`}
+                            >
+                              {variable.name}
+                            </button>
+                            <span className="node-count">({variable.nodeIds.length})</span>
+                            {variable.isRemote && !activeCollection.isGhost && (
+                              <>
+                                <span className="library-badge" title={activeCollection.libraryName ? `From library: ${activeCollection.libraryName}` : "From library"}>📚</span>
+                                {activeCollection.libraryName && <span className="library-name">{activeCollection.libraryName}</span>}
+                              </>
+                            )}
+                            {activeCollection.isGhost && <span className="ghost-badge-inline" title="Ghost library - editable">👻</span>}
                           </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                          <td className="var-type">{variable.resolvedType}</td>
+                          {activeCollection.modes.map(mode => {
+                            const value = variable.valuesByMode[mode.modeId];
+                            const isEditable = !variable.isRemote || activeCollection.isGhost;
+                            return (
+                              <td key={mode.modeId} className="var-value">
+                                <EditableCell
+                                  value={value}
+                                  type={variable.resolvedType}
+                                  variableId={variable.id}
+                                  modeId={mode.modeId}
+                                  isRemote={isEditable ? false : variable.isRemote}
+                                  onUpdate={handleUpdateVariable}
+                                />
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              </>
+            )}
+          </>
+        )}
+
+        {viewMode === 'components' && (
+          <>
+            <div className="collection-tabs">
+            {filteredComponentLibraries.map(library => (
+              <button
+                key={library.id}
+                className={`tab ${selectedLibrary === library.id ? 'active' : ''}`}
+                onClick={() => setSelectedLibrary(library.id)}
+              >
+                {library.name}
+                {library.isGhost && <span className="ghost-badge-tab" title="Library unavailable">⚠️</span>}
+              </button>
+            ))}
             </div>
-          )}
+
+            {activeLibrary && (
+              <>
+                <div className="collection-info">
+                <h2>{activeLibrary.name}</h2>
+                <p>
+                  {activeLibrary.components.length} component{activeLibrary.components.length === 1 ? '' : 's'}
+                  {activeLibrary.isRemote && (
+                    <span className="library-info"> • From library</span>
+                  )}
+                  {!activeLibrary.isRemote && (
+                    <span className="library-info"> • Local components</span>
+                  )}
+                  {activeLibrary.isGhost && (
+                    <span className="ghost-badge"> ⚠️ Library unavailable</span>
+                  )}
+                </p>
+                {activeLibrary.isGhost && (
+                  <div className="ghost-notice">
+                    ⚠️ <strong>Ghost Library Detected:</strong> This component library is no longer available (deleted, removed, or access revoked).
+                    These components may not display correctly and you should consider replacing them with local or other library components.
+                  </div>
+                )}
+              </div>
+
+              {activeLibrary.components.length === 0 ? (
+                <div className="empty-state">
+                  No components match your search.
+                </div>
+              ) : (
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th className="var-name-col">Component Name</th>
+                        <th className="var-type-col">Usage Count</th>
+                        <th className="mode-col">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeLibrary.components.map(component => (
+                        <tr key={component.id}>
+                          <td className="var-name">
+                            <button
+                              className="node-link"
+                              onClick={() => handleSelectNodes(component.nodeIds)}
+                              title={`Used by ${component.nodeIds.length} instance${component.nodeIds.length > 1 ? 's' : ''}`}
+                            >
+                              {component.name}
+                            </button>
+                            {component.isRemote && !activeLibrary.isGhost && (
+                              <span className="library-badge" title="From library">📚</span>
+                            )}
+                            {activeLibrary.isGhost && <span className="ghost-badge-inline" title="Ghost library">⚠️</span>}
+                          </td>
+                          <td className="var-type">
+                            {component.nodeIds.length} instance{component.nodeIds.length === 1 ? '' : 's'}
+                          </td>
+                          <td className="var-value">
+                            <button
+                              className="btn-select-nodes"
+                              onClick={() => handleSelectNodes(component.nodeIds)}
+                              title="Select all instances"
+                            >
+                              Select All
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              </>
+            )}
           </>
         )}
       </div>
