@@ -213,6 +213,37 @@ const App = () => {
     }
   }, [viewMode, filteredComponentLibraries, selectedLibrary]);
 
+  // Keyboard navigation for component libraries
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle arrow keys in components view
+      if (viewMode !== 'components' || filteredComponentLibraries.length === 0) return;
+
+      // Don't interfere if user is typing in search box
+      if (document.activeElement?.tagName === 'INPUT') return;
+
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+
+        const currentIndex = filteredComponentLibraries.findIndex(lib => lib.id === selectedLibrary);
+        let nextIndex: number;
+
+        if (e.key === 'ArrowLeft') {
+          // Move to previous library (wrap around)
+          nextIndex = currentIndex <= 0 ? filteredComponentLibraries.length - 1 : currentIndex - 1;
+        } else {
+          // Move to next library (wrap around)
+          nextIndex = currentIndex >= filteredComponentLibraries.length - 1 ? 0 : currentIndex + 1;
+        }
+
+        setSelectedLibrary(filteredComponentLibraries[nextIndex].id);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewMode, filteredComponentLibraries, selectedLibrary]);
+
   if (loading && !hasScanned) {
     return (
       <div className="container">

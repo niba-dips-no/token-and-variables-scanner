@@ -158,10 +158,10 @@ export async function enrichComponentLibraryData(
     let isGhost = false;
 
     if (!isLocal && components.length > 0) {
-      // For remote components, use the library key as identifier
-      // Since Figma doesn't provide a direct API to get library names for components,
-      // we'll use the shortened key as the name
-      libraryName = `Component Library ${libraryKey.substring(0, 8)}`;
+      // For remote components, use just the shortened library key
+      libraryName = libraryKey.substring(0, 8);
+    } else if (isLocal) {
+      libraryName = 'Local';
     }
 
     // Get component details
