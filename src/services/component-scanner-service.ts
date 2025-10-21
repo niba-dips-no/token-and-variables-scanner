@@ -150,20 +150,6 @@ export async function enrichComponentLibraryData(
 ): Promise<PluginComponentLibraryData[]> {
   const libraryData: PluginComponentLibraryData[] = [];
 
-  // Fetch available libraries once (performance optimization)
-  let availableLibraries: PublishableComponentSetVariable[] | null = null;
-  const hasRemoteComponents = Array.from(componentsByLibrary.keys()).some(key => key !== 'local');
-
-  if (hasRemoteComponents) {
-    try {
-      console.log('Fetching available component libraries...');
-      availableLibraries = await figma.teamLibrary.getAvailableComponentSetsAsync();
-      console.log(`Found ${availableLibraries.length} available component libraries`);
-    } catch (e) {
-      console.log('Could not fetch component libraries:', e);
-    }
-  }
-
   for (const [libraryKey, components] of componentsByLibrary.entries()) {
     const isLocal = libraryKey === 'local';
 
@@ -172,42 +158,10 @@ export async function enrichComponentLibraryData(
     let isGhost = false;
 
     if (!isLocal && components.length > 0) {
-      // Get library info from first component
-      const firstComponent = await figma.getNodeByIdAsync(components[0].id) as ComponentNode;
-
-      if (firstComponent && firstComponent.remote) {
-        // Check if library is available (ghost detection)
-        if (availableLibraries && firstComponent.key) {
-          // Try to find matching library by key
-          const matchingLib = availableLibraries.find(lib =>
-            firstComponent.key && firstComponent.key.startsWith(lib.key)
-          );
-
-          if (matchingLib) {
-            // Library is available - use its name
-            libraryName = matchingLib.name;
-            isGhost = false;
-          } else {
-            // Library not found - it's a ghost
-            isGhost = true;
-            // Try to get name from parent node or use key as fallback
-            try {
-              const parent = firstComponent.parent;
-              if (parent && 'name' in parent) {
-                libraryName = `${parent.name} (unavailable)`;
-              } else {
-                libraryName = `Library ${libraryKey.substring(0, 8)}... (unavailable)`;
-              }
-            } catch (e) {
-              libraryName = `Library ${libraryKey.substring(0, 8)}... (unavailable)`;
-            }
-            console.log(`Component library "${libraryName}" is a ghost (not available)`);
-          }
-        } else {
-          // No available libraries data or no key
-          libraryName = `Library ${libraryKey.substring(0, 8)}...`;
-        }
-      }
+      // For remote components, use the library key as identifier
+      // Since Figma doesn't provide a direct API to get library names for components,
+      // we'll use the shortened key as the name
+      libraryName = `Component Library ${libraryKey.substring(0, 8)}`;
     }
 
     // Get component details
