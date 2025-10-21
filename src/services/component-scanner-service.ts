@@ -17,6 +17,10 @@ type PluginComponentUsageData = {
   name: string;
   nodeIds: string[];
   isRemote: boolean;
+  width: number;
+  height: number;
+  description?: string;
+  parentName?: string;
 }
 
 type PluginComponentLibraryData = {
@@ -171,11 +175,20 @@ export async function enrichComponentLibraryData(
       const component = await figma.getNodeByIdAsync(componentWithNodes.id) as ComponentNode;
 
       if (component && component.type === 'COMPONENT') {
+        // Get parent name if it's a component set
+        const parentName = component.parent && component.parent.type === 'COMPONENT_SET'
+          ? component.parent.name
+          : undefined;
+
         componentsData.push({
           id: component.id,
           name: component.name,
           nodeIds: componentWithNodes.nodeIds,
-          isRemote: component.remote
+          isRemote: component.remote,
+          width: Math.round(component.width),
+          height: Math.round(component.height),
+          description: component.description || undefined,
+          parentName
         });
       }
     }

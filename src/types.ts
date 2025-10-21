@@ -51,6 +51,10 @@ export interface ComponentUsageData {
   name: string;
   nodeIds: string[];
   isRemote: boolean;
+  width: number;
+  height: number;
+  description?: string;
+  parentName?: string;
 }
 
 export interface ComponentLibraryData {

@@ -686,40 +686,64 @@ const App = () => {
                     <thead>
                       <tr>
                         <th className="var-name-col">Component Name</th>
-                        <th className="var-type-col">Usage Count</th>
+                        <th className="var-type-col">Size</th>
+                        <th className="var-type-col">Type</th>
+                        <th className="var-type-col">Usage</th>
                         <th className="mode-col">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {activeLibrary.components.map(component => (
-                        <tr key={component.id}>
-                          <td className="var-name">
-                            <button
-                              className="node-link"
-                              onClick={() => handleSelectNodes(component.nodeIds)}
-                              title={`Used by ${component.nodeIds.length} instance${component.nodeIds.length > 1 ? 's' : ''}`}
-                            >
-                              {component.name}
-                            </button>
-                            {component.isRemote && !activeLibrary.isGhost && (
-                              <span className="library-badge" title="From library">📚</span>
-                            )}
-                            {activeLibrary.isGhost && <span className="ghost-badge-inline" title="Ghost library">⚠️</span>}
-                          </td>
-                          <td className="var-type">
-                            {component.nodeIds.length} instance{component.nodeIds.length === 1 ? '' : 's'}
-                          </td>
-                          <td className="var-value">
-                            <button
-                              className="btn-select-nodes"
-                              onClick={() => handleSelectNodes(component.nodeIds)}
-                              title="Select all instances"
-                            >
-                              Select All
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {activeLibrary.components.map(component => {
+                        // Determine if it's likely an icon (small and square-ish)
+                        const isSquare = component.width === component.height;
+                        const isSmall = component.width <= 48 && component.height <= 48;
+                        const isLikelyIcon = isSquare && isSmall;
+
+                        return (
+                          <tr key={component.id}>
+                            <td className="var-name">
+                              <button
+                                className="node-link"
+                                onClick={() => handleSelectNodes(component.nodeIds)}
+                                title={`Used by ${component.nodeIds.length} instance${component.nodeIds.length > 1 ? 's' : ''}`}
+                              >
+                                {component.name}
+                              </button>
+                              {component.parentName && (
+                                <span className="component-parent" title={`Part of: ${component.parentName}`}>
+                                  {component.parentName !== component.name && ` (${component.parentName})`}
+                                </span>
+                              )}
+                              {component.isRemote && !activeLibrary.isGhost && (
+                                <span className="library-badge" title="From library">📚</span>
+                              )}
+                              {activeLibrary.isGhost && <span className="ghost-badge-inline" title="Ghost library">⚠️</span>}
+                            </td>
+                            <td className="var-type">
+                              {component.width}×{component.height}
+                            </td>
+                            <td className="var-type">
+                              {isLikelyIcon ? (
+                                <span className="icon-badge" title="Likely an icon (small & square)">🎨 Icon</span>
+                              ) : (
+                                <span title="Component">Component</span>
+                              )}
+                            </td>
+                            <td className="var-type">
+                              {component.nodeIds.length} instance{component.nodeIds.length === 1 ? '' : 's'}
+                            </td>
+                            <td className="var-value">
+                              <button
+                                className="btn-select-nodes"
+                                onClick={() => handleSelectNodes(component.nodeIds)}
+                                title="Select all instances"
+                              >
+                                Select All
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

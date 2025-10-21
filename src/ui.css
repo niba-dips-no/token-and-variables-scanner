@@ -730,3 +730,16 @@ tr:hover {
   border-color: #0b85e0;
   opacity: 1;
 }
+
+.component-parent {
+  font-size: 11px;
+  color: #999;
+  font-weight: 400;
+  font-style: italic;
+}
+
+.icon-badge {
+  font-size: 11px;
+  color: #0d99ff;
+  font-weight: 500;
+}
